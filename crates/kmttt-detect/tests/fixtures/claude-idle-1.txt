@@ -1,0 +1,7 @@
+# kind=claude expect=idle recent=false
+● Done. All 42 tests pass and clippy is clean.
+
+────────────────────────────────────────────
+>
+────────────────────────────────────────────
+  ? for shortcuts

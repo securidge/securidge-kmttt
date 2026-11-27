@@ -1,0 +1,41 @@
+name: prune-old-releases
+
+# 손으로 실행하는 정리 작업: Cargo.toml의 현재 버전(v<version>) 릴리스만 남기고
+# 이전 릴리스와 태그를 지운다. 릴리스 페이지에 옛 버전이 쌓여 헷갈리지 않게 하려고 쓴다.
+# 지운 릴리스의 파일은 되살릴 수 없다(소스는 git 이력에 남는다).
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "지우려면 delete 라고 입력 · type delete to confirm"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    if: ${{ inputs.confirm == 'delete' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: delete releases and tags other than the current version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          keep="v$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
+          echo "keep $keep"
+          gh release list --limit 200 --json tagName -q '.[].tagName' | while read -r t; do
+            if [ "$t" != "$keep" ]; then
+              echo "delete release $t"
+              gh release delete "$t" --yes --cleanup-tag
+            fi
+          done
+          git fetch --tags --quiet
+          for t in $(git tag -l); do
+            if [ "$t" != "$keep" ]; then
+              echo "delete tag $t"
+              git push --quiet origin ":refs/tags/$t"
+            fi
+          done

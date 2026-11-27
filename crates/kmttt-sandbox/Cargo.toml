@@ -1,0 +1,20 @@
+[package]
+name = "kmttt-sandbox"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow = "1.0.105"
+serde = { version = "1.0.229", features = ["derive"] }
+tokio = { version = "1.54.1", features = ["full"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = "0.4.8"
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_Security"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

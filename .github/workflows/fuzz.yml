@@ -1,0 +1,58 @@
+name: fuzz
+
+# 공격자가 입력을 만들 수 있는 파서를 퍼징한다(cargo-fuzz, libFuzzer + AddressSanitizer).
+# - main에 올릴 때와 PR: 대상마다 2분
+# - 매주 한 번(일요일)과 수동 실행: 대상마다 20분
+# 찾은 코퍼스는 캐시에 이어서 쌓고, 실패하면 재현 입력을 아티팩트로 올린다.
+on:
+  push:
+    branches: [main]
+    paths: ["crates/**", "fuzz/**", ".github/workflows/fuzz.yml"]
+  pull_request:
+    paths: ["crates/**", "fuzz/**", ".github/workflows/fuzz.yml"]
+  schedule:
+    - cron: "37 17 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    env:
+      # 저장소의 rust-toolchain.toml(안정 버전 고정)보다 우선해 나이틀리를 쓴다(-Zsanitizer 필요).
+      RUSTUP_TOOLCHAIN: nightly
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [term_feed, rpc_message, redact, egress_request, tool_policy, agent_logs]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      - name: install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: restore corpus
+        uses: actions/cache@v4
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+      - name: fuzz
+        working-directory: fuzz
+        run: |
+          secs=120
+          case "${{ github.event_name }}" in schedule|workflow_dispatch) secs=1200 ;; esac
+          mkdir -p "corpus/${{ matrix.target }}"
+          cargo fuzz run -O "${{ matrix.target }}" "corpus/${{ matrix.target }}" "seeds/${{ matrix.target }}" -- \
+            -max_total_time=$secs -rss_limit_mb=2048 -timeout=10
+      - name: keep the failing input
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+          retention-days: 30

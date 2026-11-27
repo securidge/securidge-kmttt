@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="{{LANG}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Securidge KMttt — Control Center</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body data-lang="{{LANG}}" data-actions="{{ACTIONS}}" data-version="{{VERSION}}">
+<header>
+  <div class="brand"><img class="mark" src="/favicon.svg" alt="" width="22" height="22"> Securidge <b>KMttt</b> <span class="sub" data-i18n="title">Control Center</span></div>
+  <div id="summary" class="summary"></div>
+</header>
+<main>
+  <section class="card wide" id="agents-card">
+    <h2 data-i18n="agents">Agents</h2>
+    <table id="agents"><thead><tr>
+      <th></th><th data-i18n="agent">agent</th><th data-i18n="pane">pane</th><th data-i18n="state">state</th><th data-i18n="for">for</th>
+      <th data-i18n="sandbox">sandbox</th><th>⊘</th><th>cpu · mem</th><th data-i18n="signal">signal</th><th data-i18n="last">last line</th>
+    </tr></thead><tbody></tbody></table>
+  </section>
+  <section class="card" id="approvals-card"><h2 data-i18n="approvals">Approvals</h2><ul id="approvals" class="list"></ul></section>
+  <section class="card" id="events-card"><h2 data-i18n="events">Security events</h2><ul id="events" class="list"></ul></section>
+  <section class="card" id="flows-card"><h2 data-i18n="flows">Agent-to-agent messages</h2><ul id="flows" class="list"></ul></section>
+  <section class="card" id="tools-card"><h2 data-i18n="tools">Tool calls</h2><ul id="tools" class="list"></ul></section>
+  <section class="card" id="integrity-card"><h2 data-i18n="integrity">Ledger integrity</h2><div id="integrity"></div></section>
+</main>
+<footer><span class="credit">Kwangmo Kim</span><span id="status" class="status"></span></footer>
+<script src="/app.js"></script>
+</body>
+</html>

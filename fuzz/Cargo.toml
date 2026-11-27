@@ -1,0 +1,68 @@
+[package]
+name = "kmttt-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+kmttt-term = { path = "../crates/kmttt-term" }
+kmttt-proto = { path = "../crates/kmttt-proto" }
+kmttt-redact = { path = "../crates/kmttt-redact" }
+kmttt-sandbox = { path = "../crates/kmttt-sandbox" }
+kmttt-policy = { path = "../crates/kmttt-policy" }
+kmttt-core = { path = "../crates/kmttt-core" }
+serde_json = "1"
+
+# 저장소 작업 공간과 따로 빌드한다(cargo fuzz가 나이틀리 플래그를 쓰기 때문).
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "term_feed"
+path = "fuzz_targets/term_feed.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rpc_message"
+path = "fuzz_targets/rpc_message.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "redact"
+path = "fuzz_targets/redact.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "egress_request"
+path = "fuzz_targets/egress_request.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tool_policy"
+path = "fuzz_targets/tool_policy.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "agent_logs"
+path = "fuzz_targets/agent_logs.rs"
+test = false
+doc = false
+bench = false

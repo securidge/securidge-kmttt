@@ -1,0 +1,4 @@
+# kind=copilot expect=blocked recent=false
+ Do you want to run this command?
+ ❯ 1. Yes
+   2. No

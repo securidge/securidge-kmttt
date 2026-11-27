@@ -1,0 +1,83 @@
+# Securidge KMttt policy (policy.toml)
+# Reload after editing:  kmttt server reload-config      Check syntax:  kmttt policy check
+#
+# Callers are identified by the OS (socket peer PID), not by what they claim:
+#   - user   : any process outside KMttt panes (your own terminal, the web console, SSH bridge)
+#   - agent  : any process inside a pane (an AI agent, or a script it runs)
+#   - plugin : a plugin process started by the server
+# Users are always allowed (and recorded). Agents and plugins go through the rules below.
+
+[defaults]
+# An agent sending a prompt to / starting another agent:   allow | deny | ask
+agent_to_agent_prompt = "ask"
+# An agent typing commands into / closing another pane:    allow | deny | ask
+agent_to_agent_run = "ask"
+# An agent reading another pane: "masked" (allowed, secrets redacted) or "deny"
+agent_read = "masked"
+# An agent creating panes / tabs / workspaces / worktrees
+agent_create = "allow"
+# Seconds to wait for a human decision before an "ask" becomes "deny"
+ask_timeout_secs = 120
+# Per-caller limit for non-read-only calls
+rate_per_min = 120
+
+# Rules are checked top to bottom; the first match wins. Empty fields match anything.
+# from / to: agent (kind), agent_name (alias from `kmttt agent start NAME`), workspace, pane, plugin
+#
+# [[rule]]
+# id = "claude-may-ask-reviewer"
+# from = { agent = "claude", workspace = "w1" }
+# action = "agent.prompt"          # exact name, "pane.*", or "*"
+# to = { agent_name = "reviewer" }
+# decision = "allow"
+# rate = "10/min"
+#
+# [[rule]]
+# id = "nobody-touches-prod"
+# action = "*"
+# to = { workspace = "w3" }
+# decision = "deny"
+
+# Tool-call rules for agents with hook integrations (kmttt integration install claude).
+# pattern is a regex over the tool input JSON. User rules are checked before the built-in rules
+# (rm -rf /, curl | sh, force push, .env, ssh keys, sudo, tampering with KMttt …).
+#
+# [[tool_rule]]
+# id = "no-npm-publish"
+# agent = "claude"                 # optional
+# tool = "Bash"                    # optional regex over the tool name
+# pattern = "npm\\s+publish"
+# decision = "deny"                # allow | deny | ask
+# reason = "publishing is done by CI"
+
+[sandbox]
+# Profile for new panes: none | restricted | container | wsl
+#   restricted: Linux Landlock / macOS sandbox-exec limit file writes to the working folder;
+#               on Windows only process/memory limits apply (files are NOT restricted).
+#   container : docker/podman, working folder mounted at /work (strong isolation)
+#   wsl       : run inside a WSL distribution (Windows)
+default_profile = "none"
+# Profile for panes in `kmttt worktree create` workspaces
+worktree_profile = "none"
+# Domains reachable through the egress proxy from sandboxed panes (suffix match)
+egress_allow = ["api.anthropic.com", "api.openai.com", "github.com", "githubusercontent.com", "registry.npmjs.org", "crates.io", "static.crates.io", "pypi.org", "files.pythonhosted.org"]
+# restricted: allow outbound TCP only to the egress proxy (Linux 6.7+ Landlock, macOS sandbox-exec).
+# Tools that ignore HTTPS_PROXY then fail instead of connecting directly.
+egress_enforce = true
+# Extra TCP ports a restricted pane may still connect to (port only, any address), e.g. [3000, 5432]
+allow_tcp_ports = []
+container_image = "node:22-bookworm"
+container_network = "bridge"
+wsl_distro = ""
+memory_limit_mb = 8192
+process_limit = 512
+
+# Profile used when an agent is started with `kmttt agent start NAME --kind KIND`
+[sandbox.per_agent]
+# codex = "restricted"
+
+# [identify]
+# Windows: callers started under an OS service (service manager, Task Scheduler, WMI) are
+# treated as agents. Process names listed here that appear in the lineage before the
+# service mark the caller as a person/automation instead, e.g. a CI runner.
+# trusted_launchers = ["Runner.Listener"]

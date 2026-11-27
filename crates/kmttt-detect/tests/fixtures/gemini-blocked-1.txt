@@ -1,0 +1,5 @@
+# kind=gemini expect=blocked recent=false
+ Shell npm test
+ Allow execution?
+ ● 1. Yes, allow once
+   2. No

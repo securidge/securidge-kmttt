@@ -1,0 +1,182 @@
+name: release
+
+# `v*` 태그를 올리면 OS별 실행 파일을 만들어 릴리스에 붙인다.
+#
+# 서명: 공개키는 저장소의 assets/release/minisign.pub(빌드할 때 실행 파일에 들어감).
+# 저장소 Secrets의 MINISIGN_SECRET_KEY(비밀키 파일 전체 내용)로 해시 목록 SHA256SUMS.txt 하나에 서명한다.
+# `kmttt update`는 목록의 서명(SHA256SUMS.txt.minisig)과 파일 해시가 맞지 않으면 설치를 거부한다.
+# 올리는 파일: 데스크톱 3개(Windows 설치, Linux .deb, macOS .app.zip), 명령줄 도구 5개, 해시 목록과 서명.
+
+# 릴리스 방법: `v*` 태그를 올리거나, `release` 브랜치를 올린다(버전은 Cargo.toml에서 읽어 태그를 만든다).
+on:
+  push:
+    tags: ["v*"]
+    branches: [release]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, asset: kmttt-windows-x86_64.exe, bin: kmttt.exe }
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, asset: kmttt-linux-x86_64, bin: kmttt }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, asset: kmttt-linux-aarch64, bin: kmttt }
+          - { os: macos-latest, target: aarch64-apple-darwin, asset: kmttt-macos-aarch64, bin: kmttt }
+          # Intel Mac은 Apple Silicon 러너에서 교차 빌드한다.
+          - { os: macos-latest, target: x86_64-apple-darwin, asset: kmttt-macos-x86_64, bin: kmttt, cross: true }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: build
+        shell: bash
+        run: |
+          cargo build --release --locked -p kmttt --target ${{ matrix.target }}
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/${{ matrix.bin }} dist/${{ matrix.asset }}
+          if [ "${{ matrix.cross }}" != "true" ]; then ./dist/${{ matrix.asset }} --version; fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+
+  # 데스크톱 앱. kmttt 실행 파일을 같은 폴더에 넣어 함께 배포한다(앱이 서버를 띄울 때 씀).
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, bundles: nsis }
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, bundles: deb }
+          - { os: macos-latest, target: aarch64-apple-darwin, bundles: app }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            desktop
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: webview build deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev
+      - name: build kmttt to ship next to the app
+        shell: bash
+        run: |
+          cargo build --release --locked -p kmttt --target ${{ matrix.target }}
+          ext=""; if [ "$RUNNER_OS" = "Windows" ]; then ext=".exe"; fi
+          mkdir -p desktop/binaries
+          cp "target/${{ matrix.target }}/release/kmttt$ext" "desktop/binaries/kmttt-${{ matrix.target }}$ext"
+      - name: bundle
+        working-directory: desktop
+        shell: bash
+        run: |
+          echo '{"bundle":{"externalBin":["binaries/kmttt"]}}' > tauri.release.json
+          npx --yes @tauri-apps/cli@2.12.6 build --ci --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config tauri.release.json
+      - name: installer install / upgrade / uninstall check (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./ci/installer-windows.ps1 -Setup (Get-Item "desktop/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe").FullName
+      - name: collect
+        shell: bash
+        run: |
+          mkdir -p dist
+          R="desktop/target/${{ matrix.target }}/release"
+          B="$R/bundle"
+          ls -R "$B" | head -50
+          case "$RUNNER_OS" in
+            Windows)
+              cp "$B"/nsis/*-setup.exe dist/kmttt-desktop-windows-x86_64-setup.exe
+              ;;
+            Linux)
+              cp "$B"/deb/*.deb dist/kmttt-desktop-linux-x86_64.deb
+              ;;
+            macOS)
+              ditto -c -k --keepParent "$B/macos/KMttt Desktop.app" dist/kmttt-desktop-macos-aarch64.app.zip
+              ;;
+          esac
+          ls -l dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kmttt-desktop-${{ matrix.target }}
+          path: dist/*
+
+  publish:
+    needs: [build, desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: tag name
+        id: tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            v=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+            echo "name=v$v" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: checksums and signatures
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          cd dist
+          sha256sum kmttt-* > SHA256SUMS.txt
+          if [ -n "$MINISIGN_SECRET_KEY" ]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq minisign
+            umask 077
+            printf '%s\n' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/kmttt.key"
+            # 파일마다 서명하지 않고 해시 목록 하나에만 서명한다(받는 파일 수를 줄이려고).
+            # kmttt update도 이 목록의 서명과 해시로 확인한다.
+            minisign -S -s "$RUNNER_TEMP/kmttt.key" -m SHA256SUMS.txt -t "Securidge KMttt ${{ steps.tag.outputs.name }}"
+            rm -f "$RUNNER_TEMP/kmttt.key"
+          else
+            echo "::warning::MINISIGN_SECRET_KEY is not set — release is unsigned and 'kmttt update' will refuse it"
+          fi
+          ls -l
+      - name: release notes
+        shell: bash
+        run: |
+          f="docs/releases/${{ steps.tag.outputs.name }}.md"
+          if [ -f "$f" ]; then
+            cp "$f" "$RUNNER_TEMP/notes.md"
+          else
+            {
+              echo "Securidge KMttt ${{ steps.tag.outputs.name }}"
+              echo
+              echo "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md), the [user guide](https://github.com/${{ github.repository }}/blob/main/docs/USER_GUIDE.md) and the [code signing policy](https://github.com/${{ github.repository }}#code-signing-policy)."
+              echo
+              echo 'SHA256SUMS.txt is signed with minisign: `minisign -Vm SHA256SUMS.txt -P RWSsN6lcjx/Hn8RG/c/tAQnOC1Xk3A2fOCuRT5mhX7LwEZzT9nYuU80E`, then `sha256sum -c --ignore-missing SHA256SUMS.txt`'
+            } > "$RUNNER_TEMP/notes.md"
+          fi
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          name: Securidge KMttt ${{ steps.tag.outputs.name }}
+          files: dist/*
+          body_path: ${{ runner.temp }}/notes.md
+          make_latest: true

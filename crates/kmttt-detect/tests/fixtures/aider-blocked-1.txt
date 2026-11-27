@@ -1,0 +1,2 @@
+# kind=aider expect=blocked recent=false
+Add src/main.py to the chat? (Y)es/(N)o [Yes]:

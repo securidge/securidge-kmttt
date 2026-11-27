@@ -1,0 +1,5 @@
+# kind=codex expect=idle recent=false
+codex
+The rate limiter is in place and tests pass.
+
+▌ Ask Codex to do anything

@@ -1,0 +1,5 @@
+# kind=cursor expect=blocked recent=false
+ Cursor Agent
+ Run this command?
+   git push origin main
+ (y)es / (n)o

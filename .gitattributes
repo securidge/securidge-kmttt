@@ -1,0 +1,8 @@
+# 서명된 파일은 줄바꿈을 바꾸면 서명이 깨진다(Windows autocrlf).
+assets/release/* -text
+*.minisig -text
+# 아이콘 등 바이너리
+*.ico binary
+*.png binary
+desktop/ui/vendor/* -text
+desktop/icons/* binary

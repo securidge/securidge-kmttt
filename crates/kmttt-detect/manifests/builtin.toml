@@ -1,0 +1,156 @@
+# KMttt 내장 스크린 매니페스트.
+#
+# 각 에이전트마다
+#   process : 실행 파일 이름(소문자, .exe 제외)이 정확히 같으면 이 에이전트
+#   cmdline : 명령줄에 이 문자열이 들어 있으면 이 에이전트(node로 실행되는 CLI용)
+#   launch  : `kmttt agent start`가 셸에 입력할 명령
+#   hook    : `kmttt integration install`이 지원하는 통합 이름(없으면 관찰 전용)
+#   state   : 화면 아래쪽 `lines`줄 안에서 `any` 정규식 중 하나라도 맞으면 그 상태.
+#             위에서부터 차례로 검사하고 처음 맞는 것을 쓴다.
+#
+# 규칙이 하나도 맞지 않으면: 최근 1.5초 안에 출력이 있었으면 working, 아니면 idle.
+# 에이전트 화면 문구는 버전에 따라 바뀌므로, 사용자는 설정 폴더의 manifests/*.toml로 덮어쓸 수 있다.
+
+[[agent]]
+kind = "claude"
+display = "Claude Code"
+process = ["claude"]
+cmdline = ["@anthropic-ai/claude-code", "claude-code/cli"]
+launch = "claude"
+hook = "claude"
+
+[[agent.state]]
+state = "blocked"
+lines = 18
+any = [
+  "Do you want to (proceed|make this edit|create|run|allow|use)",
+  "❯\\s*1\\.\\s*Yes",
+  "\\b1\\.\\s*Yes\\b.*\\n?.*\\b2\\.\\s*(Yes|No)",
+  "Esc to cancel",
+  "\\(y/n\\)",
+  "Press Enter to continue",
+]
+
+[[agent.state]]
+state = "working"
+lines = 8
+any = ["(?i)esc to interrupt", "(?i)ctrl\\+c to interrupt"]
+
+[[agent]]
+kind = "codex"
+display = "Codex CLI"
+process = ["codex"]
+cmdline = ["@openai/codex"]
+launch = "codex"
+hook = "codex"
+
+[[agent.state]]
+state = "blocked"
+lines = 18
+any = [
+  "(?i)allow command\\?",
+  "(?i)would you like to (run|apply|make)",
+  "(?i)approve this",
+  "\\[y/N\\]",
+  "(?i)yes, proceed",
+  # 선택 메뉴(예: 시작할 때 업데이트 질문 "› 1. Update now … enter continue · esc skip")
+  "(?i)enter (to )?continue.*esc",
+  "(?m)^\\s*›\\s*1\\.\\s",
+]
+
+[[agent.state]]
+state = "working"
+lines = 8
+any = ["(?i)esc to interrupt", "(?i)\\bworking\\b.*\\(\\d+s"]
+
+# Codex는 기다리는 동안에도 화면을 계속 다시 그려서 "최근 출력"만으로는 working으로 오인한다.
+# 입력 칸이 보이고 작업 표시가 없으면 idle(실제 Windows 화면으로 확인).
+[[agent.state]]
+state = "idle"
+lines = 5
+any = ["(?i)ask codex to do anything", "(?i)\\? for shortcuts"]
+
+[[agent]]
+kind = "opencode"
+display = "OpenCode"
+process = ["opencode"]
+cmdline = ["opencode-ai"]
+launch = "opencode"
+
+[[agent.state]]
+state = "blocked"
+lines = 18
+any = ["(?i)permission required", "(?i)allow (once|always)", "(?i)\\breject\\b.*\\ballow\\b"]
+
+[[agent.state]]
+state = "working"
+lines = 8
+any = ["(?i)esc (to )?interrupt", "(?i)working\\.\\.\\."]
+
+[[agent]]
+kind = "cursor"
+display = "Cursor Agent CLI"
+process = ["cursor-agent"]
+cmdline = ["cursor-agent"]
+launch = "cursor-agent"
+
+[[agent.state]]
+state = "blocked"
+lines = 18
+any = ["(?i)run this command\\?", "(?i)\\(y\\)es.*\\(n\\)o", "(?i)approve"]
+
+[[agent.state]]
+state = "working"
+lines = 8
+any = ["(?i)ctrl\\+c to stop", "(?i)generating"]
+
+[[agent]]
+kind = "copilot"
+display = "GitHub Copilot CLI"
+process = ["copilot"]
+cmdline = ["@github/copilot"]
+launch = "copilot"
+
+[[agent.state]]
+state = "blocked"
+lines = 18
+any = ["(?i)do you want to run", "(?i)allow .* tool", "❯\\s*1\\.\\s*Yes"]
+
+[[agent.state]]
+state = "working"
+lines = 8
+any = ["(?i)esc to cancel", "(?i)thinking"]
+
+[[agent]]
+kind = "gemini"
+display = "Gemini CLI"
+process = ["gemini"]
+cmdline = ["@google/gemini-cli"]
+launch = "gemini"
+
+[[agent.state]]
+state = "blocked"
+lines = 18
+any = ["(?i)allow execution", "(?i)apply this change\\?", "●\\s*1\\.\\s*Yes"]
+
+[[agent.state]]
+state = "working"
+lines = 8
+any = ["(?i)esc to cancel"]
+
+[[agent]]
+kind = "aider"
+display = "Aider"
+process = ["aider"]
+cmdline = ["aider-chat", "/aider"]
+launch = "aider"
+
+[[agent.state]]
+state = "blocked"
+lines = 10
+any = ["\\(Y\\)es/\\(N\\)o", "\\[Yes\\]:"]
+
+[[agent.state]]
+state = "idle"
+lines = 3
+any = ["^\\S*>\\s*$"]

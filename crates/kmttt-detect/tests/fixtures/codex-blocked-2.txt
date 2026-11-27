@@ -1,0 +1,4 @@
+# kind=codex expect=blocked recent=false
+Would you like to run the following command?
+  npm install
+[y/N]

@@ -1,0 +1,116 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # 세 OS에서 포맷·린트·테스트·빌드를 모두 통과해야 한다.
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace --no-fail-fast
+      - run: cargo build --release -p kmttt
+      - name: 실행 파일 기본 동작
+        shell: bash
+        run: |
+          ./target/release/kmttt --version
+          ./target/release/kmttt --help > /dev/null
+
+  # 실제 서버·PTY로 보안 동작 확인(승인 우회 시도, 마스킹, 훅 차단, Landlock, 기록, 웹 콘솔)
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p kmttt
+      - run: ci/e2e.sh target/debug/kmttt
+
+  # macOS: 같은 E2E 스크립트(sandbox-exec, launchd 고아 식별 포함)
+  e2e-macos:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p kmttt
+      - run: ci/e2e.sh target/debug/kmttt
+
+  # Windows: named pipe 서버, ConPTY pane, Job Object·WMI 우회 시도
+  e2e-windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p kmttt
+      - run: pwsh -NoProfile -File ci/e2e-windows.ps1 target\debug\kmttt.exe
+        shell: pwsh
+
+  # 의존성 라이선스·취약점 점검
+  # 데스크톱 앱(창 GUI). 서버·CLI와 따로 빌드한다(웹뷰 의존성이 섞이지 않게).
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+      - name: webview build deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev
+      - name: screen scripts parse
+        run: |
+          node --check desktop/ui/app.js
+          node --check desktop/ui/i18n.js
+          node ci/check-desktop-strings.js desktop/ui
+      - name: vendored xterm.js matches the recorded hash
+        shell: bash
+        run: |
+          cd desktop/ui/vendor
+          grep -E '^\| xterm\.(js|css) ' VENDOR.md | awk -F'|' '{gsub(/ /,"",$6); gsub(/ /,"",$2); print $6"  "$2}' > /tmp/sums
+          cat /tmp/sums
+          if command -v sha256sum >/dev/null; then sha256sum -c /tmp/sums; else shasum -a 256 -c /tmp/sums; fi
+      - name: fmt, clippy, test, build
+        working-directory: desktop
+        run: |
+          cargo fmt -- --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+          cargo build --locked
+
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories licenses bans sources

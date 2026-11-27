@@ -1,0 +1,32 @@
+[package]
+name = "kmttt-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow = "1.0.105"
+kmttt-core = { version = "1.2.0", path = "../kmttt-core" }
+kmttt-detect = { version = "1.2.0", path = "../kmttt-detect" }
+kmttt-ledger = { version = "1.2.0", path = "../kmttt-ledger" }
+kmttt-policy = { version = "1.2.0", path = "../kmttt-policy" }
+kmttt-proto = { version = "1.2.0", path = "../kmttt-proto" }
+kmttt-pty = { version = "1.2.0", path = "../kmttt-pty" }
+kmttt-redact = { version = "1.2.0", path = "../kmttt-redact" }
+kmttt-sandbox = { version = "1.2.0", path = "../kmttt-sandbox" }
+kmttt-term = { version = "1.2.0", path = "../kmttt-term" }
+regex = "1.13.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sysinfo = "0.40.4"
+tokio = { version = "1.54.1", features = ["full"] }
+toml = "1.2.3"
+tracing = "0.1.44"
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_System_Pipes"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+tokio = { version = "1.54.1", features = ["test-util"] }

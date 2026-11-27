@@ -1,0 +1,49 @@
+name: installer-check
+
+# Windows 설치 프로그램(NSIS)을 실제로 만들어 설치 → 업그레이드 → 제거까지 확인한다.
+# 릴리스 전에 설치 프로그램 설정(훅·안내 페이지)이 깨졌는지 알 수 있게, 데스크톱 앱이 바뀔 때마다 돈다.
+on:
+  push:
+    branches: [main]
+    paths: ["desktop/**", "crates/kmttt/**", "crates/kmttt-core/**", "ci/installer-windows.ps1", ".github/workflows/installer-check.yml"]
+  workflow_dispatch:
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            desktop
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: build kmttt to ship next to the app
+        shell: bash
+        run: |
+          cargo build --release --locked -p kmttt --target x86_64-pc-windows-msvc
+          mkdir -p desktop/binaries
+          cp target/x86_64-pc-windows-msvc/release/kmttt.exe desktop/binaries/kmttt-x86_64-pc-windows-msvc.exe
+      - name: bundle
+        working-directory: desktop
+        shell: bash
+        run: |
+          echo '{"bundle":{"externalBin":["binaries/kmttt"]}}' > tauri.release.json
+          npx --yes @tauri-apps/cli@2.12.6 build --ci --target x86_64-pc-windows-msvc --bundles nsis --config tauri.release.json
+      - name: install / upgrade / uninstall
+        shell: pwsh
+        run: ./ci/installer-windows.ps1 -Setup (Get-Item "desktop/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe").FullName
+      # 설치 확인용 빌드를 7일 동안 보관한다.
+      - name: keep the installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: kmttt-desktop-setup
+          path: desktop/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+          retention-days: 7

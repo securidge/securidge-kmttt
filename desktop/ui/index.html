@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KMttt Desktop</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="vendor/xterm.css" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="vendor/xterm.js"></script>
+    <script src="i18n.js"></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div id="app">
+      <header id="top">
+        <div id="brand"><img src="icon.svg" alt="" width="20" height="20" /><span>KMttt</span></div>
+        <nav id="menubar" aria-label="menu"></nav>
+      </header>
+      <div id="toolbar" role="toolbar"></div>
+      <div id="alerts" aria-live="polite"></div>
+      <div id="tipbar"></div>
+      <main id="main">
+        <aside id="sidebar"><div id="rail"></div><div id="wslist"></div><div id="usage"></div></aside>
+        <section id="center">
+          <div id="viewtabs" role="tablist"></div>
+          <div id="view-terminal" class="view">
+            <div id="termbar"><div id="wstabs"></div><div id="panebar"></div></div>
+            <div id="panes"></div>
+          </div>
+          <div id="view-control" class="view hidden"></div>
+          <div id="view-approvals" class="view hidden"></div>
+          <div id="view-log" class="view hidden"></div>
+          <div id="tokpanel" role="region" aria-label="token usage" hidden></div>
+        </section>
+      </main>
+      <footer id="statusbar"><span id="credit">Kwangmo Kim · 비상업 개인 프로젝트</span><span id="usagebar"></span><span id="conn"></span></footer>
+    </div>
+    <div id="toasts" aria-live="polite"></div>
+  </body>
+</html>

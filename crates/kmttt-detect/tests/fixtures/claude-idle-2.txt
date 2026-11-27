@@ -1,0 +1,6 @@
+# kind=claude expect=idle recent=false
+> what does this repo do?
+
+● It is a terminal multiplexer for AI coding agents.
+
+>

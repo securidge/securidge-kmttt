@@ -1,0 +1,3 @@
+# kind=cursor expect=working recent=false
+ Cursor Agent
+ ⠋ Generating…  ctrl+c to stop

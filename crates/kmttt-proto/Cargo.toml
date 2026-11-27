@@ -1,0 +1,17 @@
+[package]
+name = "kmttt-proto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow = "1.0.105"
+base64 = "0.22"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["io-util", "macros"] }
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["rt", "io-util", "macros"] }

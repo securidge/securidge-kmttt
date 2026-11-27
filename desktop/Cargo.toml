@@ -1,0 +1,46 @@
+[package]
+name = "kmttt-desktop"
+version = "1.2.0"
+edition = "2021"
+rust-version = "1.97"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/securidge/securidge-kmttt"
+authors = ["Kwangmo Kim"]
+description = "KMttt Desktop — window GUI for the Securidge KMttt server (personal project by Kwangmo Kim)"
+
+# 웹뷰 의존성이 서버·CLI 빌드에 섞이지 않도록 독립된 워크스페이스로 둔다.
+[workspace]
+
+[[bin]]
+name = "kmttt-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+anyhow = "1"
+kmttt-core = { path = "../crates/kmttt-core" }
+kmttt-detect = { path = "../crates/kmttt-detect" }
+kmttt-policy = { path = "../crates/kmttt-policy" }
+kmttt-proto = { path = "../crates/kmttt-proto" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.12", features = [] }
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+toml = "1"
+toml_edit = "0.25"
+
+[features]
+default = ["custom-protocol"]
+# 화면 파일을 실행 파일에 넣어 tauri:// 로 읽는다(배포 빌드). 개발 서버는 쓰지 않는다.
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

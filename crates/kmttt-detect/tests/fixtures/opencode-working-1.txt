@@ -1,0 +1,6 @@
+# kind=opencode expect=working recent=false
+ opencode  build  claude-sonnet
+
+ Writing src/limit.ts
+
+ working...  esc interrupt

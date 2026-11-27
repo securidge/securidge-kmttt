@@ -1,0 +1,5 @@
+# kind=opencode expect=blocked recent=false
+ Permission required: bash
+ rm -rf dist
+
+ [reject]  [allow once]  [allow always]

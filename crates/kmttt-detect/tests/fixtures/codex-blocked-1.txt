@@ -1,0 +1,9 @@
+# kind=codex expect=blocked recent=false
+codex
+I need to run the test suite.
+
+  $ cargo test
+
+Allow command?
+  › Yes (y)
+    No, and tell Codex what to do differently (esc)

@@ -1,0 +1,34 @@
+name: check-signing-key
+
+# 등록한 MINISIGN_SECRET_KEY가 저장소 공개키(assets/release/minisign.pub)의 짝인지 확인한다.
+# 비밀키 내용은 출력하지 않는다.
+on:
+  push:
+    branches: [check-signing]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: compare key pair
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "::error::MINISIGN_SECRET_KEY is not set"
+            exit 1
+          fi
+          sudo apt-get update -qq && sudo apt-get install -y -qq minisign
+          umask 077
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/k.key"
+          # 비밀키로 시험 파일에 서명하고, 저장소 공개키로 검증한다.
+          echo "kmttt signing key check" > "$RUNNER_TEMP/probe.txt"
+          minisign -S -s "$RUNNER_TEMP/k.key" -m "$RUNNER_TEMP/probe.txt" >/dev/null
+          rm -f "$RUNNER_TEMP/k.key"
+          minisign -Vm "$RUNNER_TEMP/probe.txt" -p assets/release/minisign.pub
+          echo "OK: the secret key matches assets/release/minisign.pub"

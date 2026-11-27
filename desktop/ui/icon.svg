@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Securidge KMttt</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c222b"/>
+      <stop offset="1" stop-color="#0b0f14"/>
+    </linearGradient>
+    <linearGradient id="coral" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f0a07a"/>
+      <stop offset="0.55" stop-color="#d97757"/>
+      <stop offset="1" stop-color="#b8553a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.45" r="0.55">
+      <stop offset="0" stop-color="#d97757" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#d97757" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#161b22"/>
+      <stop offset="1" stop-color="#0d1117"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 바탕: GitHub풍 어두운 회색 둥근 사각형 -->
+  <rect x="32" y="32" width="960" height="960" rx="216" fill="url(#bg)"/>
+  <rect x="32" y="32" width="960" height="960" rx="216" fill="url(#glow)"/>
+  <rect x="33.5" y="33.5" width="957" height="957" rx="214.5" fill="none" stroke="#30363d" stroke-width="3"/>
+
+  <!-- 방패: 신뢰(Trusted) -->
+  <path d="M512 138 L812 244 V492 C812 688 688 828 512 900 C336 828 212 688 212 492 V244 Z"
+        fill="#0d1117" stroke="url(#coral)" stroke-width="34" stroke-linejoin="round"/>
+
+  <!-- 터미널: 세 개의 pane(멀티플렉서) -->
+  <rect x="318" y="350" width="388" height="318" rx="30" fill="url(#screen)" stroke="#3d444d" stroke-width="8"/>
+  <line x1="512" y1="354" x2="512" y2="664" stroke="#3d444d" stroke-width="8"/>
+  <line x1="516" y1="509" x2="702" y2="509" stroke="#3d444d" stroke-width="8"/>
+
+  <!-- 왼쪽 pane: 프롬프트 -->
+  <path d="M362 470 L410 508 L362 546" fill="none" stroke="url(#coral)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="424" y="534" width="54" height="20" rx="10" fill="#e6edf3"/>
+
+  <!-- 오른쪽 pane들: 에이전트 상태등(관제) -->
+  <circle cx="560" cy="430" r="17" fill="#3fb950"/>
+  <rect x="592" y="421" width="78" height="18" rx="9" fill="#8b949e"/>
+  <circle cx="560" cy="588" r="17" fill="#d29922"/>
+  <rect x="592" y="579" width="58" height="18" rx="9" fill="#8b949e"/>
+
+  <!-- 추적(Tracker): 방패 아래 상태 막대 -->
+  <rect x="402" y="726" width="220" height="22" rx="11" fill="#30363d"/>
+  <rect x="402" y="726" width="138" height="22" rx="11" fill="url(#coral)"/>
+</svg>

@@ -1,0 +1,24 @@
+[package]
+name = "kmttt-ledger"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow = "1.0.105"
+base64 = "0.23.1"
+chacha20poly1305 = "0.11.0"
+ed25519-dalek = { version = "3.0.0", features = ["rand_core"] }
+hex = "0.4.3"
+kmttt-proto = { version = "1.2.0", path = "../kmttt-proto" }
+rand = "0.8"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.2"
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

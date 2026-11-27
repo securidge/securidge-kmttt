@@ -1,0 +1,2 @@
+{"type":"assistant","timestamp":"2026-11-27T11:00:00Z","message":{"id":"m1","usage":{"input_tokens":10,"cache_creation_input_tokens":200,"output_tokens":40}}}
+{"timestamp":"2026-11-27T11:01:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":200,"output_tokens":50}}}}

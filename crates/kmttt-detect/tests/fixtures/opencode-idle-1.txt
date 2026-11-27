@@ -1,0 +1,6 @@
+# kind=opencode expect=idle recent=false
+ opencode  build
+
+ Finished. 3 files changed.
+
+ > 

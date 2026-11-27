@@ -1,0 +1,27 @@
+KMttt Desktop — Securidge KMttt (Trusted Terminal Tracker)
+
+[한국어]
+이 프로그램은 김광모(Kwangmo Kim)의 비상업 개인 프로젝트입니다.
+- 회사나 소속 기관의 제품이 아니며, 그 기관이 보증하지 않습니다.
+- 판매하거나 유료로 제공하는 프로그램이 아닙니다. 무료로 배포합니다.
+- 소스 코드 라이선스는 MIT 또는 Apache-2.0 중 하나를 고를 수 있습니다(저장소의 LICENSE 파일 참고).
+- "있는 그대로" 제공하며, 어떤 보증도 하지 않습니다. 사용에 따른 책임은 사용자에게 있습니다.
+
+설치하면 이 폴더에 KMttt Desktop(창 프로그램)과 kmttt(서버·명령줄 도구)가 들어갑니다.
+제거: 설정 → 앱 → 설치된 앱 → KMttt Desktop → 제거.
+제거할 때 실행 중인 KMttt 서버를 끄고, Claude Code·Codex 설정에 이 프로그램이 등록한 훅과 상태 줄을 지웁니다.
+설정과 보안 기록을 지울지는 제거 중에 묻습니다(기본은 남김).
+
+[English]
+This program is a non-commercial personal project by Kwangmo Kim.
+- It is not a product of, or endorsed by, any employer or organization.
+- It is not sold or offered as a paid service. It is distributed free of charge.
+- The source code is licensed under MIT or Apache-2.0, at your option (see LICENSE in the repository).
+- It is provided "as is", without warranty of any kind. You use it at your own risk.
+
+Installing puts KMttt Desktop (the window app) and kmttt (the server and command-line tool) in this folder.
+Uninstall: Settings → Apps → Installed apps → KMttt Desktop → Uninstall.
+Uninstalling stops the running KMttt server and removes the hooks and status line this copy registered in Claude Code and Codex.
+You are asked whether to delete settings and the security log (kept by default).
+
+https://github.com/securidge/securidge-kmttt

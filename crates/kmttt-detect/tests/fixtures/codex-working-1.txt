@@ -1,0 +1,7 @@
+# kind=codex expect=working recent=false
+>_ OpenAI Codex
+
+user
+add a rate limiter to /login
+
+• Working (14s • esc to interrupt)

@@ -1,0 +1,11 @@
+/target
+**/*.rs.bk
+*.pdb
+.DS_Store
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+/desktop/target
+/desktop/gen
+/desktop/binaries
+/desktop/tauri.release.json
