@@ -991,3 +991,30 @@ fn integration_status_reports_fixed_claude_reasons() {
     f.ok(&["integration", "install", "claude-usage", "--replace"]);
     assert_eq!(reason(&f, "claude-usage"), "ok");
 }
+
+// T-040: file access errors are not reported as broken contents or a
+// registration mismatch. A directory in place of a file fails to read on
+// every OS without changing real permissions.
+#[test]
+fn integration_status_separates_unreadable_files_from_bad_contents() {
+    let f = Fixture::new();
+    std::fs::create_dir_all(&f.config).unwrap();
+    assert_eq!(reason(&f, "codex"), "config_unreadable");
+    std::fs::remove_dir(&f.config).unwrap();
+    let settings = f.root.path().join("settings.json");
+    std::fs::create_dir_all(&settings).unwrap();
+    for agent in ["claude", "claude-usage"] {
+        assert_eq!(reason(&f, agent), "config_unreadable");
+    }
+
+    f.configure(&f.argv());
+    f.ok(&["integration", "install", "codex", "--chain"]);
+    assert_eq!(reason(&f, "codex"), "ok");
+    let saved = std::fs::read(f.sidecar()).unwrap();
+    std::fs::remove_file(f.sidecar()).unwrap();
+    std::fs::create_dir(f.sidecar()).unwrap();
+    assert_eq!(reason(&f, "codex"), "chain_unreadable");
+    std::fs::remove_dir(f.sidecar()).unwrap();
+    std::fs::write(f.sidecar(), &saved).unwrap();
+    assert_eq!(reason(&f, "codex"), "ok");
+}

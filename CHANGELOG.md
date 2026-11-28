@@ -2,6 +2,7 @@
 
 ## 1.3.5 — 미출시 / Unreleased
 
+- `integration status`가 읽기 권한 같은 파일 접근 오류를 내용 오류와 구분해 `config_unreadable`·`chain_unreadable`로 알려 줍니다 / `integration status` reports file access errors such as missing permissions as `config_unreadable` or `chain_unreadable`, separate from broken contents
 - `kmttt integration status`가 연동마다 고정 사유 코드(`reason`)와 짧은 설명(`reason_text`)을 함께 보여 줍니다. 설정 파일 없음·깨짐, 다른 프로그램의 notify, 등록 불일치, 연결 대상 없음·거부 등을 경로나 명령 없이 알려 줍니다 / `kmttt integration status` now adds a fixed reason code (`reason`) and a short explanation (`reason_text`) per integration, such as a missing or broken settings file, a notify owned by another program, a registration mismatch, or a missing or refused chained program, without paths or commands
 - Codex notify 감사 억제에서 어느 창인지 식별하지 못한 호출자는 창과 겹치지 않는 별도 묶음으로 세고, 요약에 "unknown callers"와 서로 다른 프로세스 수를 적습니다 / Notify chain audit throttling counts callers that cannot be attributed to a pane in a separate group, and its summary names them "unknown callers" with the number of distinct processes
 

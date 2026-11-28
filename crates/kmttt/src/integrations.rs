@@ -334,11 +334,13 @@ pub fn installed(agent: &str) -> Result<bool> {
 pub enum Reason {
     Ok,
     ConfigMissing,
+    ConfigUnreadable,
     ConfigInvalid,
     NotifyMissing,
     NotifyOtherProgram,
     NotifyOtherKmttt,
     ChainRegistrationMismatch,
+    ChainUnreadable,
     ChainTargetMissing,
     ChainRejected,
     HooksMissing,
@@ -352,11 +354,13 @@ impl Reason {
         match self {
             Self::Ok => "ok",
             Self::ConfigMissing => "config_missing",
+            Self::ConfigUnreadable => "config_unreadable",
             Self::ConfigInvalid => "config_invalid",
             Self::NotifyMissing => "notify_missing",
             Self::NotifyOtherProgram => "notify_other_program",
             Self::NotifyOtherKmttt => "notify_other_kmttt",
             Self::ChainRegistrationMismatch => "chain_registration_mismatch",
+            Self::ChainUnreadable => "chain_unreadable",
             Self::ChainTargetMissing => "chain_target_missing",
             Self::ChainRejected => "chain_rejected",
             Self::HooksMissing => "hooks_missing",
@@ -370,12 +374,16 @@ impl Reason {
         match self {
             Self::Ok => "integration is installed and working",
             Self::ConfigMissing => "agent settings file does not exist",
+            Self::ConfigUnreadable => "agent settings file exists but cannot be read",
             Self::ConfigInvalid => "agent settings file cannot be parsed",
             Self::NotifyMissing => "Codex notify is not set",
             Self::NotifyOtherProgram => "Codex notify runs another program",
             Self::NotifyOtherKmttt => "Codex notify uses a different KMttt installation",
             Self::ChainRegistrationMismatch => {
                 "chained notify no longer matches its registration; reinstall --chain"
+            }
+            Self::ChainUnreadable => {
+                "chained notify registration cannot be read (file access error)"
             }
             Self::ChainTargetMissing => "chained notify program cannot be found",
             Self::ChainRejected => {
@@ -395,7 +403,7 @@ pub fn diagnose(agent: &str) -> Result<Reason> {
     let text = match std::fs::read_to_string(&f) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Reason::ConfigMissing),
-        Err(_) => return Ok(Reason::ConfigInvalid),
+        Err(_) => return Ok(Reason::ConfigUnreadable),
     };
     if agent == "codex" {
         let Ok(notify) = parse_codex_notify(&text) else {
@@ -417,7 +425,11 @@ pub fn diagnose(agent: &str) -> Result<Reason> {
                     Reason::ChainTargetMissing
                 }
                 Some(crate::notify_chain::ChainProblem::Rejected) => Reason::ChainRejected,
-                _ => Reason::ChainRegistrationMismatch,
+                Some(crate::notify_chain::ChainProblem::Mismatch) => {
+                    Reason::ChainRegistrationMismatch
+                }
+                // Untyped errors are file access failures, not content problems.
+                None => Reason::ChainUnreadable,
             },
         });
     }
@@ -803,11 +815,17 @@ fn registered_codex_chain() -> Result<Option<Vec<String>>> {
         return Ok(None);
     };
     use crate::notify_chain::{chain_error, ChainProblem::*};
-    let Some(record) = read_codex_previous(&f, &n.argv).map_err(|_| {
-        chain_error(
-            Mismatch,
-            "saved Codex notify does not match the current integration",
-        )
+    // Reading the saved record can fail for I/O reasons (permissions, a
+    // directory in its place); only content problems are a mismatch.
+    let Some(record) = read_codex_previous(&f, &n.argv).map_err(|e| {
+        if e.downcast_ref::<std::io::Error>().is_some() {
+            e
+        } else {
+            chain_error(
+                Mismatch,
+                "saved Codex notify does not match the current integration",
+            )
+        }
     })?
     else {
         return Ok(None);
