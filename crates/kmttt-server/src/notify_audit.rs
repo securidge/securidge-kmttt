@@ -20,6 +20,14 @@ use std::collections::{HashMap, VecDeque};
 pub const WINDOW_MS: i64 = 60_000;
 /// Individually recorded failures (failed + timed_out) per caller per window.
 pub const FAILURE_LIMIT: usize = 20;
+/// Bucket for callers the server could not attribute to a pane. Counting them
+/// per process would not limit anything (every Codex notify is a new process),
+/// so they share this one bucket, which cannot collide with a pane id, and its
+/// summary names them as a group with the number of distinct processes.
+pub const UNKNOWN_KEY: &str = "#unknown";
+const UNKNOWN_LABEL: &str = "unknown callers";
+/// Distinct processes remembered per pending summary.
+const MAX_PIDS: usize = 4096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
@@ -91,6 +99,8 @@ struct Pending {
     last_ms: i64,
     caller: String,
     target: String,
+    /// Some only for the unknown bucket: distinct peer processes.
+    pids: Option<std::collections::BTreeSet<u32>>,
 }
 
 impl Pending {
@@ -121,7 +131,11 @@ impl Pending {
                 self.first_ms,
                 self.last_ms,
                 self.last_ms - self.first_ms
-            ),
+            ) + &self
+                .pids
+                .as_ref()
+                .map(|p| format!(", {} distinct processes", p.len()))
+                .unwrap_or_default(),
             toast: false,
         }
     }
@@ -159,11 +173,13 @@ pub struct Outcome {
 impl Gate {
     /// `key` identifies the caller for counting (transport identity);
     /// `caller`/`target` are what the ledger shows.
+    #[allow(clippy::too_many_arguments)]
     pub fn record(
         &mut self,
         key: &str,
         caller: &str,
         target: &str,
+        pid: Option<u32>,
         phase: Phase,
         limit: u32,
         now: i64,
@@ -202,12 +218,19 @@ impl Gate {
                 recorded: true,
             };
         }
+        let unknown = key == UNKNOWN_KEY;
         let p = st.pending.get_or_insert_with(|| Pending {
             first_ms: now,
-            caller: caller.into(),
+            caller: if unknown { UNKNOWN_LABEL } else { caller }.into(),
             target: target.into(),
+            pids: unknown.then(Default::default),
             ..Pending::default()
         });
+        if let (Some(pids), Some(pid)) = (p.pids.as_mut(), pid) {
+            if pids.len() < MAX_PIDS {
+                pids.insert(pid);
+            }
+        }
         match phase {
             Phase::Started => p.started += 1,
             Phase::Completed => p.completed += 1,
@@ -249,7 +272,7 @@ mod tests {
     use super::*;
 
     fn rec(g: &mut Gate, key: &str, phase: Phase, now: i64) -> Outcome {
-        g.record(key, key, "codex", phase, 3, now)
+        g.record(key, key, "codex", None, phase, 3, now)
     }
 
     #[test]
@@ -396,5 +419,52 @@ mod tests {
         assert_eq!(f.len(), 1);
         assert_eq!(f[0].caller, "w1:p1");
         assert!(f[0].detail.starts_with("suppressed 1 "));
+        assert!(
+            !f[0].detail.contains("processes"),
+            "only for unknown callers"
+        );
+    }
+
+    // T-037: unattributed callers share one bucket that no pane id can reach,
+    // and its summary names them as a group with their process count.
+    #[test]
+    fn unknown_callers_share_a_separate_bucket_with_a_group_summary() {
+        let mut g = Gate::default();
+        let unknown = |g: &mut Gate, pid: u32, now: i64| {
+            g.record(
+                UNKNOWN_KEY,
+                "unknown",
+                "unknown",
+                Some(pid),
+                Phase::Started,
+                3,
+                now,
+            )
+        };
+        for (i, pid) in [10, 11, 12, 13, 14, 13, 15].into_iter().enumerate() {
+            assert_eq!(unknown(&mut g, pid, i as i64).recorded, i < 3);
+        }
+        // A pane named like the old shared key is still its own caller.
+        assert!(
+            g.record(
+                "unknown",
+                "unknown",
+                "unknown",
+                Some(1),
+                Phase::Started,
+                3,
+                9
+            )
+            .recorded
+        );
+        let f = g.flush(10, true);
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].caller, "unknown callers");
+        assert!(
+            f[0].detail.starts_with("suppressed 4 ")
+                && f[0].detail.ends_with(", 3 distinct processes"),
+            "{}",
+            f[0].detail
+        );
     }
 }

@@ -389,6 +389,7 @@ impl Server {
         key: &str,
         caller: &str,
         target: &str,
+        pid: Option<u32>,
         phase: notify_audit::Phase,
     ) -> bool {
         let limit = self
@@ -399,7 +400,7 @@ impl Server {
         let Ok(out) = self
             .notify_audit
             .lock()
-            .map(|mut g| g.record(key, caller, target, phase, limit, now_ms()))
+            .map(|mut g| g.record(key, caller, target, pid, phase, limit, now_ms()))
         else {
             return false;
         };
