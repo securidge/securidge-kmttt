@@ -104,7 +104,7 @@ On Windows, when a pane closes, its shell exits or you quit KMttt, all of that p
 | --- | --- | --- |
 | ● working | The agent is working | Wait |
 | ▲ waiting for input | It is waiting for an answer, approval or choice | Use [Go to pane] on the banner and answer |
-| ✓ done (unseen) | It finished in the background | Check the result |
+| ✓ done (unread) | It finished in the background | Check the result |
 | ○ idle | Ready, already seen | Give the next instruction |
 | ? unknown | The screen does not tell | Look at the pane |
 
@@ -123,6 +123,8 @@ To keep calling the previous notifier after KMttt reporting, explicitly opt in w
 Chaining runs only the native executable whose path was resolved and registered during installation, without shell interpretation. Shells and scripts, including `.cmd`/`.bat` files, are rejected as the notifier program; Windows requires a native `.exe`. A notifier that exceeds its 3-second limit is terminated along with its descendants. A skipped or failed previous notifier is reported as `KMttt previous notify skipped or failed`.
 
 Run `kmttt integration uninstall codex` to remove the integration and restore the saved notifier. If you have replaced KMttt's installed `notify` yourself, removal leaves your current setting and the saved notifier unchanged.
+
+If an integration does not seem to work, run `kmttt integration status`. Each integration shows a reason code (`reason`) and a short explanation (`reason_text`): for example `config_unreadable` (the settings file cannot be read, such as a permissions problem), `config_invalid` (its contents are not valid), `notify_other_program` (Codex `notify` points at another program) or `chain_target_missing` (the program connected with `--chain` cannot be found). `ok` means it is working. The reason fields never include paths, program names or arguments.
 
 ## 6. Answering approval requests
 
