@@ -177,9 +177,9 @@
   function localToast(text) {
     let m = text.match(/^⚑ (?:approval requested|승인 요청) #(\d+): (\S+) → (\S+) (\S+)$/);
     if (m) return t("toast.approval", { id: m[1], from: describePane(m[2]), act: actionName(m[3]), to: describePane(m[4]) });
-    m = text.match(/^✓ (\S+) (\S+): (?:finished|작업 끝남)$/);
+    m = text.match(/^✓ (\S+) (\S+): (?:finished|작업 끝남|작업 완료)$/);
     if (m) return t("toast.done", { name: m[2] });
-    m = text.match(/^▲ (\S+) (\S+): (?:needs input|입력이 필요함)$/);
+    m = text.match(/^▲ (\S+) (\S+): (?:needs input|입력이 필요함|입력 필요)$/);
     if (m) return t("toast.blocked", { name: m[2] });
     return text;
   }
@@ -239,6 +239,7 @@
     { id: "palette", menu: "help", keys: "Ctrl+Shift+P", run: () => palette() },
     { id: "shortcuts", menu: "help", run: () => dlgShortcuts() },
     { id: "uninstall_help", menu: "help", sep: true, run: () => dlgGuide("about"), kw: "uninstall remove 제거 삭제" },
+    { id: "sponsor", menu: "help", sep: true, run: () => openSponsor(), kw: "sponsor donate support github sponsors 후원 기부" },
     { id: "about", menu: "help", run: () => dlgAbout() },
   ];
   const actionById = (id) => ACTIONS.find((a) => a.id === id);
@@ -376,12 +377,18 @@
   }
   document.addEventListener("click", () => closeMenus());
 
+  // 에이전트가 하나도 없을 때만 [에이전트 실행]을 강조한다(처음 쓰는 사람용 안내). 실행 중이면 다른 버튼과 같게.
+  const hasAgents = () => !!S.snap && snap().panes.some((p) => p.agent);
+  function syncToolbarEmphasis() {
+    const el = document.querySelector("#toolbar .tbtn.start");
+    if (el) el.classList.toggle("primary", !hasAgents());
+  }
   function renderToolbar() {
     const tb = clear($("#toolbar"));
     const b = (id, kids, cls, title) =>
       h("button", { class: "tbtn " + (cls || ""), type: "button", title: title || actLabel(actionById(id)), "aria-label": title || actLabel(actionById(id)), onclick: () => runAction(id) }, kids);
     tb.append(
-      b("start_agent", [icon(ICON.play), t("act.start_agent")], "primary ic", t("act.start_agent") + " · " + keyLabel("Ctrl+Shift+A")),
+      b("start_agent", [icon(ICON.play), t("tb.start_agent")], "start ic" + (hasAgents() ? "" : " primary"), t("act.start_agent") + " · " + keyLabel("Ctrl+Shift+A")),
       h("span", { class: "tsep" }),
       b("new_workspace", [icon(ICON.workspace), t("sb.workspaces")], "ic", t("act.new_workspace") + " · " + keyLabel("Ctrl+Shift+N")),
       b("new_tab", [icon(ICON.tab), t("tb.tab")], "ic", t("act.new_tab") + " · " + keyLabel("Ctrl+Shift+T")),
@@ -670,6 +677,7 @@
   }
 
   function renderPanes() {
+    syncToolbarEmphasis();
     const box = $("#panes");
     box.querySelectorAll(".divider, .panes-empty").forEach((x) => x.remove());
     const live = new Set(snap().panes.map((p) => p.id));
@@ -1299,6 +1307,13 @@
   }
   function renderStatus() {
     $("#credit").textContent = t("credit");
+    let sp = $("#sponsor");
+    if (!sp) {
+      sp = h("button", { id: "sponsor", type: "button", onclick: () => openSponsor() });
+      $("#credit").after(sp);
+    }
+    sp.textContent = "♥ " + t("act.sponsor");
+    sp.title = t("sponsor.h");
     const c = clear($("#conn"));
     if (S.connecting) c.append(h("span", { text: t("conn.connecting") }));
     else if (S.connected) {
@@ -2294,6 +2309,11 @@
     $("#toasts").append(el);
     setTimeout(() => el.remove(), level === "critical" ? 20000 : level === "bad" ? 9000 : 5000);
   }
+  // 후원 페이지: 앱에 고정된 주소라 확인 창 없이 기본 브라우저로 연다.
+  const SPONSOR_URL = "https://github.com/sponsors/kkmkkmzz";
+  function openSponsor() {
+    invoke("open_url", { url: SPONSOR_URL }).catch((e) => showError(errText(e)));
+  }
   async function confirmOpenUrl(uri) {
     if (!/^https?:\/\//i.test(uri)) return;
     if (await confirmDlg(t("confirm.open_url"), uri, t("dlg.ok"))) invoke("open_url", { url: uri }).catch((e) => showError(errText(e)));
@@ -2466,7 +2486,9 @@
     const st = S.connected ? await rpc("server.status").catch(() => null) : null;
     const lines = t("about.body", { v: S.info.version || "?" }).split("\n");
     const body = h("div", { class: "about" }, h("img", { src: "icon.svg", alt: "", width: 72, height: 72 }), h("div", null, lines.map((l) => h("p", { text: l })), st ? h("p", { class: "muted", text: t("about.server", { s: `v${st.version} · pid ${st.pid} · ${st.session}` }) }) : null));
-    return modal({ title: t("act.about"), body, buttons: [{ label: t("dlg.close"), value: true, primary: true }] });
+    const r = await modal({ title: t("act.about"), body, buttons: [{ label: "♥ " + t("act.sponsor"), value: "sponsor" }, { label: t("dlg.close"), value: true, primary: true }] });
+    if (r === "sponsor") openSponsor();
+    return r;
   }
 
   // 명령 팔레트: 모든 동작을 이름(한국어·영어)으로 찾는다.

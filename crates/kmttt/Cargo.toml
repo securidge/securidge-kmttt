@@ -10,17 +10,17 @@ anyhow = "1.0.105"
 clap = { version = "4.6.10", features = ["derive", "env"] }
 clap_complete = "4.6.12"
 dirs = "7.0.0"
-kmttt-core = { version = "1.2.1", path = "../kmttt-core" }
-kmttt-detect = { version = "1.2.1", path = "../kmttt-detect" }
-kmttt-ledger = { version = "1.2.1", path = "../kmttt-ledger" }
-kmttt-policy = { version = "1.2.1", path = "../kmttt-policy" }
-kmttt-proto = { version = "1.2.1", path = "../kmttt-proto" }
-kmttt-pty = { version = "1.2.1", path = "../kmttt-pty" }
-kmttt-redact = { version = "1.2.1", path = "../kmttt-redact" }
-kmttt-sandbox = { version = "1.2.1", path = "../kmttt-sandbox" }
-kmttt-server = { version = "1.2.1", path = "../kmttt-server" }
-kmttt-tui = { version = "1.2.1", path = "../kmttt-tui" }
-kmttt-web = { version = "1.2.1", path = "../kmttt-web" }
+kmttt-core = { version = "1.2.2", path = "../kmttt-core" }
+kmttt-detect = { version = "1.2.2", path = "../kmttt-detect" }
+kmttt-ledger = { version = "1.2.2", path = "../kmttt-ledger" }
+kmttt-policy = { version = "1.2.2", path = "../kmttt-policy" }
+kmttt-proto = { version = "1.2.2", path = "../kmttt-proto" }
+kmttt-pty = { version = "1.2.2", path = "../kmttt-pty" }
+kmttt-redact = { version = "1.2.2", path = "../kmttt-redact" }
+kmttt-sandbox = { version = "1.2.2", path = "../kmttt-sandbox" }
+kmttt-server = { version = "1.2.2", path = "../kmttt-server" }
+kmttt-tui = { version = "1.2.2", path = "../kmttt-tui" }
+kmttt-web = { version = "1.2.2", path = "../kmttt-web" }
 minisign-verify = "0.3.0"
 sha2 = "0.11.2"
 serde_json = "1.0.154"

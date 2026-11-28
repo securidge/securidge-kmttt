@@ -8,7 +8,9 @@ A terminal multiplexer for AI coding agents, with security controls built in and
 
 KMttt gives each agent (Claude Code, Codex CLI, OpenCode, Cursor CLI, Copilot CLI, Gemini CLI, Aider, or a plain shell) its own **real terminal pane**. A background server owns the panes, detects what each agent is doing, and routes every pane-to-pane action through a policy gate, a secret redactor and a tamper-evident ledger.
 
-[한국어 README](README.ko.md) · [Design](docs/DESIGN.md) · [Decisions](docs/DECISIONS.md) · [Security policy](SECURITY.md) · [Desktop user guide](docs/USER_GUIDE.md) · [Code signing policy](#code-signing-policy) · [Changelog](CHANGELOG.md)
+[한국어 README](README.ko.md) · [Design](docs/DESIGN.md) · [Decisions](docs/DECISIONS.md) · [Security policy](SECURITY.md) · [Desktop user guide](docs/USER_GUIDE.md) · [Code signing policy](#code-signing-policy) · [Changelog](CHANGELOG.md) · [♥ Sponsor](https://github.com/sponsors/kkmkkmzz)
+
+If KMttt helps you, consider [sponsoring its development](https://github.com/sponsors/kkmkkmzz). KMttt stays free; sponsoring is voluntary.
 
 ## What it does
 
@@ -48,20 +50,20 @@ If you would rather click than learn key bindings, use **KMttt Desktop**. It is 
 ![KMttt Desktop main window](docs/images/desktop/main.png)
 
 - **Install**: from Releases, get `kmttt-desktop-windows-x86_64-setup.exe`. It ships with `kmttt.exe`. The installer opens with a **personal, non-commercial project notice** and installs for your account only (no admin rights). Linux: `.deb`; macOS: `.app.zip`.
-- **First run** walks you through four steps (language → protection level → project folder → first AI agent).
+- **First run** walks you through four steps (language → isolation level → project folder → first AI agent).
 - **AI usage**: the bottom-left panel shows how much Claude Code and Codex usage is **left (%) and a reset countdown** ("Resets in 4h 30m"). Claude needs a one-time [Connect] and works on Pro/Max plans only ([guide section 7](docs/USER_GUIDE.md#7-ai-usage-what-is-left-and-when-it-resets)).
 - **Help**: `F1` or [? Guide] has getting started, how-tos, shortcuts, a glossary, and about/uninstall. The 💡 line tells you what to do next.
-- **Find a feature**: press `Ctrl+Shift+P` and type what you want to do ("split", "approve", "usage").
-- **Uninstall**: Windows Settings → Apps → KMttt Desktop → Uninstall. It stops the server, removes the hooks and status line this copy registered in Claude/Codex (restoring your own status line), and asks whether to delete settings and the security log (default: keep).
+- **Command palette**: press `Ctrl+Shift+P` and type what you want to do ("split", "approve", "usage").
+- **Uninstall**: Windows Settings → Apps → KMttt Desktop → Uninstall. It stops the server, removes the hooks and status line this copy registered in Claude/Codex (restoring your own status line), and asks whether to delete settings and the audit log (default: keep).
 
 | To do this | Do this |
 | --- | --- |
-| Open a project | [+ New workspace] → pick a folder → pick a protection level |
-| Start an AI agent | [▶ Start an AI agent] → pick Claude Code, Codex, … |
+| Open a project | [+ New workspace] → pick a folder → pick a isolation level |
+| Launch an agent | [Launch agent] → pick Claude Code, Codex, … |
 | Split and resize | [Split left/right] / [Split top/bottom], drag the line between panes |
 | Answer an approval | [View] on the yellow banner → [Allow] / [Deny] |
-| See every agent | [Overview] tab |
-| Change rules or protection | [⚙ Settings] → [Security rules] / [Protection] → [Save] (changes that weaken security ask again) |
+| See every agent | [Control center] tab |
+| Change the security policy or isolation | [⚙ Settings] → [Security policy] / [Isolation] → [Save] (changes that weaken security ask again) |
 | Copy and paste | Drag to select → `Ctrl+Shift+C` / `Ctrl+Shift+V` (also `Ctrl+V` on Windows), or right-click |
 
 The desktop app's security design is in [decisions D23–D26](docs/DECISIONS.md) and the [security review](docs/SECURITY-REVIEW.md). In short: the webview only loads the screens built into the app (no remote content), and it can call only an allow-listed set of server methods. A desktop app started inside a pane or by an automation tool is refused by the server.
