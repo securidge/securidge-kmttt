@@ -39,11 +39,15 @@ const HAS_TAGS = (() => {
     return false;
   }
 })();
+// 태그 대신 지금 트리로 확인한 태그(메시지에 그렇게 밝힌다)
+const FALLBACK_TAGS = new Set();
+const where = (tag) => (FALLBACK_TAGS.has(tag) ? `checked in the working tree; tag ${tag} not fetched` : `not in ${tag}`);
 function readAtTag(tag, p) {
   try {
     execFileSync("git", ["-C", root, "rev-parse", "--verify", "--quiet", `refs/tags/${tag}`], { stdio: "ignore" });
   } catch {
     if (HAS_TAGS && tag !== CURRENT_TAG) return TAG_MISSING;
+    FALLBACK_TAGS.add(tag);
     const f = path.join(root, p);
     if (!fs.existsSync(f)) return null;
     return p.endsWith(".md") ? fs.readFileSync(f, "utf8") : UNREAD;
@@ -112,9 +116,9 @@ function checkAbsolute(rel, line, url) {
     const [, tag, p, frag] = tagged;
     const text = readAtTag(tag, decodeURIComponent(p));
     if (text === TAG_MISSING) report(rel, line, `tag not found: ${tag} in ${url}`);
-    else if (text === null) report(rel, line, `broken link ${url} (not in ${tag})`);
+    else if (text === null) report(rel, line, `broken link ${url} (${where(tag)})`);
     else if (frag && typeof text === "string" && !parseText(text).anchors.has(decodeURIComponent(frag).toLowerCase()))
-      report(rel, line, `broken anchor ${url} (not in ${tag})`);
+      report(rel, line, `broken anchor ${url} (${where(tag)})`);
     return true;
   }
   const self = SELF.exec(url.replace(/[.,;:]+$/, ""));
