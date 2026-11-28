@@ -91,7 +91,7 @@ Press **[? Guide]** (F1) for getting started, how-tos, shortcuts, a glossary, an
 | See every agent | [Control center] tab | Ctrl+Shift+O |
 | Larger / smaller text | View menu | Ctrl+= / Ctrl+- |
 
-On Windows, closing a terminal pane also ends all its descendant processes, including GUI apps first launched from that pane (such as VS Code or a browser opened for sign-in). Open apps you want to keep using outside KMttt, or start them before launching them from a pane.
+On Windows, when a pane closes, its shell exits or you quit KMttt, all of that pane's descendant processes end too, including GUI apps first launched from it (such as VS Code or a browser opened for sign-in). Open apps you want to keep using outside KMttt, or start them before you open them from a pane.
 
 ## 5. Working with AI agents
 
