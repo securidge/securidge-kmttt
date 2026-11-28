@@ -105,6 +105,7 @@ kmttt machine add alice@build-box --label build-box   # 관제 센터에 표시
 
 KMttt 창 안에서 일하는 방법을 Claude Code와 Codex에게 알려 주는 에이전트 스킬을 제공합니다. 다른 에이전트에게 승인 한 번으로 메시지 보내기, 답을 기다리고 화면 읽기, 승인·거부·격리된 창의 외부 통신 차단을 우회하지 않고 처리하는 방법이 들어 있습니다.
 
+- **자동**: KMttt에서 Claude Code·Codex를 연동하면(KMttt Desktop: 에이전트 → Claude 사용량 연동, 또는 `kmttt integration install claude|codex`) 스킬도 함께 설치되고, 연동 해제·프로그램 제거 때 함께 지워집니다.
 - **Claude Code**: `/plugin marketplace add securidge/securidge-kmttt` 실행 후 `/plugin install kmttt@securidge`
 - **Codex**: [`plugins/kmttt/skills/kmttt`](plugins/kmttt/skills/kmttt) 폴더를 `~/.agents/skills/kmttt`(또는 저장소의 `.agents/skills/kmttt`)에 복사
 - **SKILL.md를 읽는 그 밖의 도구**: `npx skills add securidge/securidge-kmttt`

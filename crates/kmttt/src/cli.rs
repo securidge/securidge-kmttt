@@ -439,6 +439,8 @@ pub enum IntegrationCmd {
     Status {
         agent: Option<String>,
     },
+    /// 연동된 에이전트(claude, codex)의 KMttt 스킬을 이 버전으로 갱신
+    SyncSkills,
 }
 
 #[derive(Subcommand, Debug)]

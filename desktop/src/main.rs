@@ -653,6 +653,10 @@ fn main() {
         .manage(AppState::default())
         .setup(|app| {
             setup_tray(app)?;
+            // 앱을 업데이트했으면 연동된 Claude·Codex의 KMttt 스킬도 이 버전으로 맞춘다(실패해도 무시).
+            std::thread::spawn(|| {
+                let _ = run_kmttt(&["integration", "sync-skills"]);
+            });
             Ok(())
         })
         // 창 닫기(X): 바로 닫지 않고 화면에서 "창만 닫기 / 프로그램 끝내기"를 묻는다.

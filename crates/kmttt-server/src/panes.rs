@@ -106,6 +106,13 @@ impl Server {
         }
         env.push(("KMTTT_PANE".into(), id.into()));
         env.push(("KMTTT_SESSION".into(), self.opts.session.clone()));
+        // 창 안에서 부르는 kmttt가 같은 세션(서버)에 붙도록 CLI가 읽는 이름으로도 넣는다.
+        env.push(("KMTTT_SESSION_NAME".into(), self.opts.session.clone()));
+        // PATH에 없어도 창 안의 에이전트가 kmttt를 찾을 수 있게 실행 파일 경로를 알려 준다.
+        env.push((
+            "KMTTT_EXE".into(),
+            self.opts.kmttt_exe.display().to_string(),
+        ));
         let spec = SpawnSpec {
             program: wrapped.program.clone(),
             args: wrapped.args.clone(),

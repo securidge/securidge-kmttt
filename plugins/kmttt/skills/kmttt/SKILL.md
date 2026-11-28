@@ -9,13 +9,11 @@ KMttt runs each AI agent in its own terminal pane and puts a policy gate between
 
 ## 1. Check where you are
 
-- Inside KMttt, `KMTTT_PANE` (your pane id, for example `w2:p1`) and `KMTTT_SESSION` are set. Bash: `echo "$KMTTT_PANE"`. PowerShell: `$env:KMTTT_PANE`. If it is empty, you are not in KMttt and this skill does not apply.
-- Find the tool: try `kmttt --version`. If it is not on PATH, use the copy installed with KMttt Desktop:
-  - Windows: `%LOCALAPPDATA%\KMttt Desktop\kmttt.exe` (Git Bash: `"$LOCALAPPDATA/KMttt Desktop/kmttt.exe"`)
-  - Otherwise: the `kmttt` binary next to the KMttt Desktop executable.
-- Always pass your session so you talk to the right server: `kmttt -s "$KMTTT_SESSION" ...` (PowerShell: `-s $env:KMTTT_SESSION`).
+- Inside KMttt, `KMTTT_PANE` (your pane id, for example `w2:p1`) is set. Bash: `echo "$KMTTT_PANE"`. PowerShell: `$env:KMTTT_PANE`. If it is empty, you are not in KMttt and this skill does not apply.
+- Run the tool through `KMTTT_EXE`, the full path of the `kmttt` that runs this pane, so PATH does not matter. Bash: `"$KMTTT_EXE"`. PowerShell: `& $env:KMTTT_EXE`. `KMTTT_SESSION_NAME` is also set, so commands reach the right session without extra flags.
+- Older KMttt versions do not set `KMTTT_EXE`. Then try `kmttt`, or on Windows `%LOCALAPPDATA%\KMttt Desktop\kmttt.exe`, and pass `-s "$KMTTT_SESSION"`.
 
-The examples below write `K` for `kmttt -s "$KMTTT_SESSION"`.
+The examples below write `K` for `"$KMTTT_EXE"`.
 
 ## 2. Talk to another agent
 

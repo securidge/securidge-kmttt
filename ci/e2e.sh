@@ -48,6 +48,9 @@ B=$("$K" pane split "$A" --direction right --no-focus | grep '"pane"' | tr -d ' 
 check "two panes ($A, $B)" '[ -n "$A" ] && [ -n "$B" ]'
 sleep 1
 
+"$K" pane run "$A" 'echo "ENV-SESSION=$KMTTT_SESSION_NAME ENV-EXE=$KMTTT_EXE"' >/dev/null
+check "panes get KMTTT_SESSION_NAME and KMTTT_EXE" 'wait_for 5 "$K pane read $A --lines 10 | grep -q \"ENV-SESSION=[^ ]\\+ ENV-EXE=.*kmttt\""'
+
 echo "== F1 agent-to-agent approval"
 "$K" pane run "$A" "$K pane run $B 'echo E2E-ALLOWED'; echo RC1=\$?" >/dev/null
 check "pane→pane run is queued" 'wait_for 5 "[ \$(pending) -ge 1 ]"'

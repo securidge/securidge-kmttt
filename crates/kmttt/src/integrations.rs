@@ -45,6 +45,83 @@ fn codex_config() -> PathBuf {
         .unwrap_or_else(|| home().join(".codex").join("config.toml"))
 }
 
+/// KMttt 에이전트 스킬. 저장소의 plugins/kmttt/skills/kmttt/SKILL.md를 실행 파일에 넣어 둔다.
+const SKILL_MD: &str = include_str!("../../../plugins/kmttt/skills/kmttt/SKILL.md");
+/// KMttt가 설치한 스킬 폴더에만 남기는 표식(안에 설치한 kmttt 경로). 이 표식이 없으면 건드리지 않는다.
+const SKILL_MARK: &str = ".kmttt-installed";
+
+/// 에이전트가 스킬을 읽는 폴더. Claude Code: ~/.claude/skills, Codex: ~/.agents/skills.
+/// (설정 파일 위치를 바꿔 쓰는 경우 그 옆 폴더를 쓴다 — 테스트도 이 경로를 쓴다.)
+fn skill_dir(agent: &str) -> Option<PathBuf> {
+    match agent {
+        "claude" => Some(
+            claude_settings()
+                .parent()
+                .map(|p| p.join("skills").join("kmttt"))
+                .unwrap_or_else(|| home().join(".claude").join("skills").join("kmttt")),
+        ),
+        "codex" => Some(match std::env::var_os("KMTTT_CODEX_CONFIG") {
+            Some(c) => PathBuf::from(c)
+                .parent()
+                .map(|p| p.join(".agents").join("skills").join("kmttt"))
+                .unwrap_or_default(),
+            None => home().join(".agents").join("skills").join("kmttt"),
+        }),
+        _ => None,
+    }
+}
+
+/// 스킬을 설치·갱신한다. 같은 이름의 스킬을 사용자가 직접 만들어 두었으면 그대로 둔다.
+pub fn install_skill(agent: &str) -> Result<Option<String>> {
+    let Some(d) = skill_dir(agent) else {
+        return Ok(None);
+    };
+    let md = d.join("SKILL.md");
+    if md.exists() && !d.join(SKILL_MARK).exists() {
+        return Ok(Some(format!(
+            "left your own skill at {} unchanged",
+            d.display()
+        )));
+    }
+    if std::fs::read_to_string(&md).ok().as_deref() == Some(SKILL_MD) {
+        return Ok(None);
+    }
+    std::fs::create_dir_all(&d)?;
+    std::fs::write(&md, SKILL_MD)?;
+    std::fs::write(d.join(SKILL_MARK), exe() + "\n")?;
+    Ok(Some(format!("installed KMttt skill in {}", d.display())))
+}
+
+/// KMttt가 설치한 스킬만 지운다(`only_this_exe`면 이 실행 파일이 설치한 것만).
+pub fn uninstall_skill(agent: &str, only_this_exe: bool) -> Result<Option<String>> {
+    let Some(d) = skill_dir(agent) else {
+        return Ok(None);
+    };
+    let Ok(mark) = std::fs::read_to_string(d.join(SKILL_MARK)) else {
+        return Ok(None);
+    };
+    if only_this_exe && !mentions_this_exe(&mark) {
+        return Ok(None);
+    }
+    let _ = std::fs::remove_file(d.join("SKILL.md"));
+    let _ = std::fs::remove_file(d.join(SKILL_MARK));
+    let _ = std::fs::remove_dir(&d); // 사용자가 넣은 다른 파일이 있으면 폴더는 남는다
+    Ok(Some(format!("removed KMttt skill from {}", d.display())))
+}
+
+/// 연동된 에이전트의 스킬을 현재 버전으로 맞춘다(앱을 업데이트한 뒤 한 번).
+pub fn sync_skills() -> Result<Vec<String>> {
+    let mut out = Vec::new();
+    for a in ["claude", "codex"] {
+        if installed(a)? {
+            if let Some(m) = install_skill(a)? {
+                out.push(m);
+            }
+        }
+    }
+    Ok(out)
+}
+
 fn exe() -> String {
     std::env::current_exe()
         .map(|p| p.display().to_string())
@@ -189,6 +266,11 @@ pub fn run(ic: IntegrationCmd) -> Result<i32> {
             let msg = uninstall_with(&agent, if_this_exe)?;
             println!("{msg}");
         }
+        IntegrationCmd::SyncSkills => {
+            for m in sync_skills()? {
+                println!("{m}");
+            }
+        }
         IntegrationCmd::Status { agent } => {
             let agents: Vec<String> = agent
                 .map(|a| vec![a])
@@ -296,8 +378,11 @@ pub fn install(agent: &str) -> Result<String> {
         }
         _ => unreachable!(),
     }
+    let skill = install_skill(agent)?
+        .map(|m| format!("\n{m}"))
+        .unwrap_or_default();
     Ok(format!(
-        "installed {agent} integration in {}{}",
+        "installed {agent} integration in {}{}{skill}",
         f.display(),
         bak.map(|b| format!(" (backup: {})", b.display()))
             .unwrap_or_default()
@@ -430,7 +515,13 @@ pub fn uninstall_with(agent: &str, only_this_exe: bool) -> Result<String> {
         }
         _ => unreachable!(),
     }
-    Ok(format!("removed {agent} integration from {}", f.display()))
+    let skill = uninstall_skill(agent, only_this_exe)?
+        .map(|m| format!("\n{m}"))
+        .unwrap_or_default();
+    Ok(format!(
+        "removed {agent} integration from {}{skill}",
+        f.display()
+    ))
 }
 
 /// 에이전트가 부르는 훅. Claude Code: 표준 입력 JSON, 종료 코드 2 = 차단(사유는 stderr).
@@ -521,7 +612,25 @@ mod tests {
         assert_eq!(v["hooks"]["Stop"].as_array().unwrap().len(), 2);
         assert_eq!(v["hooks"]["PreToolUse"][0]["matcher"], "*");
         assert!(installed("claude").unwrap());
+        // 스킬도 함께 설치되고(표식 포함), 지울 때 함께 지워진다
+        let skill = d.path().join("skills").join("kmttt");
+        assert_eq!(
+            std::fs::read_to_string(skill.join("SKILL.md")).unwrap(),
+            SKILL_MD
+        );
+        assert!(skill.join(SKILL_MARK).exists());
+        assert!(sync_skills().unwrap().is_empty()); // 이미 최신
         uninstall("claude").unwrap();
+        assert!(!skill.exists());
+        // 사용자가 직접 만든 같은 이름의 스킬은 덮어쓰지도 지우지도 않는다
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(skill.join("SKILL.md"), "mine").unwrap();
+        install("claude").unwrap();
+        uninstall("claude").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(skill.join("SKILL.md")).unwrap(),
+            "mine"
+        );
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         assert_eq!(v["hooks"]["Stop"].as_array().unwrap().len(), 1);
         assert_eq!(v["hooks"]["Stop"][0]["hooks"][0]["command"], "say done");
@@ -567,7 +676,10 @@ mod tests {
         assert!(notify < table, "{text}");
         let parsed: toml::Table = toml::from_str(&text).unwrap();
         assert!(parsed["notify"].as_array().is_some());
+        let skill = d.path().join(".agents").join("skills").join("kmttt");
+        assert!(skill.join("SKILL.md").exists());
         uninstall("codex").unwrap();
+        assert!(!skill.exists());
         assert!(!std::fs::read_to_string(&f).unwrap().contains("notify"));
         // 사용자가 직접 둔 notify는 건드리지 않는다
         std::fs::write(&f, "notify = [\"my-notifier\"]\n").unwrap();
