@@ -2,6 +2,7 @@
 
 ## 1.3.3 — 미출시 / Unreleased
 
+- Windows E2E 점검은 KMttt 창 안에서 실행하면 안내 후 중단하며, 로컬 리다이렉트 핸들 누수 검사를 `cmd /c`와 인용한 경로로 수행합니다 / Windows E2E checks refuse to run inside KMttt and use `cmd /c` with quoted paths for the local redirect handle leak check
 - Windows E2E 점검을 로컬에서 임시 세션·폴더로 분리하고 종료 시 정리합니다. 로컬 `default` 세션 지정은 `-Force` 없이는 거부합니다 / Local Windows E2E checks use temporary sessions and directories with cleanup; selecting `default` locally requires `-Force`
 - 이미 결정된 승인 ID를 다시 결정하면 오류로 거부해 세션 허용이 뒤늦게 추가되지 않도록 했습니다 / Repeated decisions for an already decided approval now return an error without creating a session grant
 - Codex 연동에 `--replace`를 쓰면 기존 notify를 보관하고 해제 시 복원합니다. 설치 출력에 기존 notify와 관련 기능이 일시 중단됨을 안내합니다 / Codex integration can save an existing notify with `--replace` and restore it on uninstall; installation warns that the previous notifier and related features are temporarily disabled
