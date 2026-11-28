@@ -1114,7 +1114,7 @@
   async function closePane(id) {
     const pid = id || focusedPane();
     if (!pid) return;
-    if (await confirmDlg(t("act.close_pane"), t("confirm.close_pane"), t("act.close_pane"), true)) await tryRpc("pane.close", { pane: pid });
+    if (await confirmDlg(t("act.close_pane"), (IS_WIN ? t("confirm.close_pane_win") : t("confirm.close_pane")), t("act.close_pane"), true)) await tryRpc("pane.close", { pane: pid });
   }
   async function closeTab() {
     const tb = focusedTab();
@@ -1123,7 +1123,7 @@
   async function closeWorkspace(id) {
     const ws = id ? snap().workspaces.find((w) => w.id === id) : focusedWs();
     if (!ws) return;
-    if (await confirmDlg(t("act.close_workspace"), t("confirm.close_workspace", { n: ws.label }), t("act.close_workspace"), true))
+    if (await confirmDlg(t("act.close_workspace"), (IS_WIN ? t("confirm.close_workspace_win", { n: ws.label }) : t("confirm.close_workspace", { n: ws.label })), t("act.close_workspace"), true))
       await tryRpc("workspace.close", { id: ws.id });
   }
   async function renameWorkspace(id) {

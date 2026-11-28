@@ -2,6 +2,7 @@
 
 ## 1.3.4 — 미출시 / Unreleased
 
+- Windows에서 창이나 워크스페이스를 닫을 때, 그 창에서 시작한 프로그램과 처음 연 앱(VS Code, 로그인 브라우저 등)도 함께 닫힌다고 확인 창에 안내합니다 / On Windows, the close confirmation for a pane or workspace now says that programs started from it, including apps first opened from it, close too
 - Codex notify 연결은 WSL·콘솔 호스트·원격 셸 실행 파일을 거부하고 실행 결과를 감사 로그에 남깁니다(서버가 없으면 생략). / Codex notify chaining rejects shell forwarding hosts and audits execution outcomes when a server is available.
 
 ## 1.3.3 — 2026-11-28
