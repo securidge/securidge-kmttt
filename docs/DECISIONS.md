@@ -8,6 +8,7 @@
 Unix는 `SO_PEERCRED`, Windows는 `GetNamedPipeClientProcessId`로 상대 프로세스 PID를 얻습니다. 그 PID가 pane 루트 프로세스의 자손이면 그 pane(에이전트)으로, 플러그인 프로세스의 자손이면 플러그인으로 봅니다. 나머지는 사람(User)으로 봅니다. 토큰 방식은 쓰지 않았습니다. 같은 사용자 권한으로 도는 에이전트는 토큰 파일을 그냥 읽을 수 있어서입니다.
 
 **D2. pane에서 빠져나간 프로세스도 pane 출신으로 본다.**
+
 계보만 보면 에이전트가 `( kmttt pane run … & )`처럼 부모를 끊어(이중 fork) 사람으로 분류될 수 있습니다. 그래서 세 겹으로 막습니다.
 1. Linux: 서버를 `PR_SET_CHILD_SUBREAPER`로 둡니다. 그러면 pane 자손 고아가 init 대신 서버 밑으로 옵니다. 계보가 pane 루트를 거치지 않고 서버에 닿으면 "unknown" 에이전트(가장 제한적)로 봅니다.
 2. 모든 OS: 호출 프로세스 환경 변수에 `KMTTT_PANE`이 있으면 그 pane으로 봅니다. 일부러 지우면 피할 수 있는 보조 신호입니다.
@@ -16,7 +17,7 @@ Unix는 `SO_PEERCRED`, Windows는 `GetNamedPipeClientProcessId`로 상대 프로
 서버가 입양한 고아의 좀비는 0.5초마다 회수합니다. 이때 서버가 직접 띄운 자식(pane 루트, git, 플러그인)의 종료 상태를 가로채지 않도록, 그 자식들은 같은 잠금 안에서 띄우고 등록합니다(`kmttt-pty::reaper`).
 
 macOS와 Windows는 subreaper가 없어 다른 방법을 씁니다.
-- Windows: pane 루트를 pane마다 전용 Job Object에 넣습니다. 자식은 부모를 끊어도 Job을 벗어날 수 없으므로(breakaway 미허용) `IsProcessInJob`으로 확실히 식별됩니다. 부모가 먼저 끝난 손자 프로세스도 식별하며, CI가 실제 API로 확인합니다. 계보를 따라 올라가다 터미널·데스크톱 호스트보다 WMI·작업 스케줄러·서비스 관리자를 먼저 만나는 호출자도 unknown으로 봅니다. Windows Terminal 같은 패키지 앱은 svchost가 띄우기 때문에 "있는지"가 아니라 "먼저인지"로 판단합니다.
+- Windows: pane 루트를 pane마다 전용 Job Object에 넣습니다. 창을 닫으면 그 창의 자손 프로세스도 끝납니다. 서버가 비정상 종료되어도 Job의 마지막 핸들이 닫히면 자손이 종료됩니다. 자식은 부모를 끊어도 Job을 벗어날 수 없으므로(breakaway 미허용) `IsProcessInJob`으로 확실히 식별됩니다. 부모가 먼저 끝난 손자 프로세스도 식별하며, CI가 실제 API로 확인합니다. 계보를 따라 올라가다 터미널·데스크톱 호스트보다 WMI·작업 스케줄러·서비스 관리자를 먼저 만나는 호출자도 unknown으로 봅니다. Windows Terminal 같은 패키지 앱은 svchost가 띄우기 때문에 "있는지"가 아니라 "먼저인지"로 판단합니다.
 - macOS: launchd(PID 1) 밑으로 간 고아이면서 제어 터미널이 없는 호출자를 unknown으로 봅니다. 사람이 터미널에서 친 CLI는 셸이 살아 있는 부모이고 제어 터미널도 있습니다. macOS CI에서 이중 fork + setsid 프로세스로 확인합니다.
 
 **D3. pane 안에서 사람이 직접 `kmttt`를 쳐도 에이전트로 본다.**

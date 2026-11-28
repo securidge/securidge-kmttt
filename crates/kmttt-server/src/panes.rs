@@ -138,14 +138,14 @@ impl Server {
                 );
             });
         }
-        if let Some(cmd) = &np.command {
-            // 셸이 입력을 버퍼에 쌓으므로 바로 써도 된다. 명령이 끝나도 pane은 셸로 남는다.
-            pty.write(format!("{cmd}\r").as_bytes())?;
-        }
         let job = pty
             .pid()
             .and_then(kmttt_pty::reaper::PaneJob::attach)
             .map(Arc::new);
+        if let Some(cmd) = &np.command {
+            // Job에 먼저 넣어 즉시 실행되는 명령의 자손도 같은 수명을 갖게 한다.
+            pty.write(format!("{cmd}\r").as_bytes())?;
+        }
         let pane = Pane {
             job,
             id: id.into(),
@@ -431,6 +431,10 @@ impl Server {
             let Some(mut p) = st.panes.remove(id) else {
                 return;
             };
+            // 자연 종료도 포함한다. identify()의 Arc가 남아 있어도 즉시 끝낸다.
+            if let Some(job) = &p.job {
+                job.terminate();
+            }
             if kill {
                 if let Some(pty) = p.pty.as_mut() {
                     pty.kill();

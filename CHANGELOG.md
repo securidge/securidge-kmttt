@@ -2,6 +2,7 @@
 
 ## 1.3.2 — 미출시 / Unreleased
 
+- Windows에서 창을 닫거나 서버가 종료되면 분리된 자손 프로세스도 함께 종료됩니다 / Windows pane descendants, including detached processes, now exit when their pane closes or the server exits
 - 보안: 식별하지 못한 호출자(unknown)에게는 [이 세션 동안 허용]을 적용하지 않습니다. 이전에는 이런 호출자들이 같은 이름으로 묶여, 한 에이전트에 준 세션 허용이 다른 창 에이전트의 요청까지 자동 허용할 수 있었습니다 / Security: "Allow for this session" no longer applies to unidentified callers, which shared one grant and could let a grant given to one agent approve another pane's requests
 - Codex 연동 상태 수정: Codex를 연동해도 `kmttt integration status`가 `installed: false`로 나오고, 앱 시작 시 Codex용 kmttt 스킬이 새 버전으로 갱신되지 않던 문제를 고쳤습니다 / Fixed `kmttt integration status` reporting Codex as not installed after a successful install, which also kept the Codex kmttt skill from being refreshed on app start
 
