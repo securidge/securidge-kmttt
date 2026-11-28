@@ -183,10 +183,23 @@
     if (m) return t("toast.blocked", { name: m[2] });
     return text;
   }
+  // 승인·감사 기록의 호출자는 "w2:p6(codex)"처럼 창 번호 뒤에 에이전트 이름이 붙어 온다.
+  // 꼬리표에서 창 번호를 떼어 창 정보를 찾는다(없으면 null).
+  function callerPaneId(label) {
+    const s = String(label || "");
+    if (paneInfo(s)) return s;
+    const m = /^([^()]+)\((.*)\)$/.exec(s);
+    return m ? m[1] : s;
+  }
+  const callerInfo = (label) => paneInfo(callerPaneId(label)) || null;
+  // 짧은 호출자 이름(알림 막대·알림·감사 로그용)
+  function callerName(label) {
+    const p = callerInfo(label);
+    if (p) return agentLabel(p);
+    return callerPaneId(label) === "unknown" ? t("ap.pane_unknown") : String(label || "");
+  }
   function describePane(id) {
-    // 승인 요청의 호출자는 "w2:p6(codex)"처럼 창 번호 뒤에 에이전트 이름이 붙어 온다.
-    const m = /^([^()]+)\((.*)\)$/.exec(String(id || ""));
-    if (m && !paneInfo(id)) id = m[1];
+    id = callerPaneId(id);
     if (id === "unknown") return t("ap.pane_unknown");
     const p = paneInfo(id);
     if (!p) return String(id || "");
@@ -1436,8 +1449,7 @@
     if (S.connected && integ && integ.ok === false && integ.level !== "off") bands.push({ level: "bad", text: t("alert.integrity", { detail: integ.detail || "?" }), btns: [[t("alert.view"), () => setView("log")]] });
     if (S.approvals.length) {
       const a = S.approvals[0];
-      const p = paneInfo(a.caller);
-      const who = p ? agentLabel(p) : String(a.caller || "");
+      const who = callerName(a.caller);
       const detail = a.detail ? ": " + oneLine(a.detail, 90) : "";
       bands.push({
         level: "warn",
@@ -1515,10 +1527,9 @@
     for (const a of S.approvals) {
       if (S.notified.has(a.id)) continue;
       S.notified.add(a.id);
-      const p = paneInfo(a.caller);
       const left = Math.max(0, Math.round((a.expires_ms - Date.now()) / 1000));
       invoke("notify", {
-        title: t("nt.title", { name: p ? agentLabel(p) : String(a.caller || "") }),
+        title: t("nt.title", { name: callerName(a.caller) }),
         body: t("nt.body", { act: actionName(a.action).replace(/ \(.*\)$/, "") + (a.detail ? ": " + oneLine(a.detail, 120) : ""), s: left }),
       }).catch(() => {});
     }
@@ -2114,7 +2125,7 @@
     const evs = ((S.control && S.control.events) || []).slice().reverse();
     const since = Date.now() - RANGES[f.range || "1h"];
     const q = (f.q || "").toLowerCase();
-    const base = evs.filter((e) => e.ts_ms >= since && (!f.pane || e.caller === f.pane || e.target === f.pane) && (!q || [e.kind, e.caller, e.target, e.detail].join(" ").toLowerCase().includes(q)));
+    const base = evs.filter((e) => e.ts_ms >= since && (!f.pane || callerPaneId(e.caller) === f.pane || e.target === f.pane) && (!q || [e.kind, e.caller, e.target, e.detail].join(" ").toLowerCase().includes(q)));
     return { all: evs, base, rows: f.sev ? base.filter((e) => e.severity === f.sev) : base };
   }
   function renderLog() {
@@ -2197,7 +2208,7 @@
     const tb = h("tbody");
     const allowed = new Set(((S.policy && S.policy.sandbox && S.policy.sandbox.egress_allow) || []).map((d) => String(d).replace(/^\*\./, "").toLowerCase()));
     for (const e of rows.slice(0, 500)) {
-      const who = paneInfo(e.caller);
+      const who = callerInfo(e.caller);
       const detail = h("td", { class: "mono", text: logDetail(e) });
       if (e.kind === "sandbox.egress_denied") {
         const host = String(e.target || "").replace(/:\d+$/, "").toLowerCase();
@@ -2212,7 +2223,7 @@
           h("td", { class: "mono", text: fmtTime(e.ts_ms) }),
           h("td", null, h("span", { class: "sevb sev-" + e.severity, text: I18N.en["sev." + e.severity] ? t("sev." + e.severity) : e.severity })),
           h("td", { text: e.kind }),
-          h("td", { text: who ? agentLabel(who) : e.caller === "sandbox" ? t("log.who_sandbox") : e.caller, title: e.caller }),
+          h("td", { text: who ? agentLabel(who) : e.caller === "sandbox" ? t("log.who_sandbox") : callerName(e.caller), title: e.caller }),
           h("td", { text: e.target }),
           detail,
         ),

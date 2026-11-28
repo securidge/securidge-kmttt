@@ -2,7 +2,7 @@
 
 ## 1.3.4 — 미출시 / Unreleased
 
-- 승인 상세에서 요청한 창이 `w2:p6(codex)` 같은 날 글자 대신 워크스페이스와 창 이름으로 보이고, 식별하지 못한 창은 그렇다고 표시합니다 / Approval details now name the requesting pane and workspace instead of showing a raw label like `w2:p6(codex)`, and say so when the pane could not be identified
+- 승인 알림 막대·Windows 알림·승인 상세·감사 로그에서 요청한 창이 `w2:p6(codex)` 같은 날 글자 대신 창 이름으로 보이고, 식별하지 못한 창은 그렇다고 표시합니다. 감사 로그를 창으로 걸러 볼 때 이름이 붙은 에이전트의 기록이 빠지던 문제도 고쳤습니다 / The approval banner, Windows notification, approval details and audit log now name the requesting pane instead of a raw label like `w2:p6(codex)` and say when it could not be identified; filtering the audit log by pane no longer drops records from named agents
 - 문서 전수 검수 반영: 메뉴 이름, 제거 시 Codex `notify` 복원 안내, Codex 연동 방법, 영어판 용어·문법과 빠진 내용, 한국어 조사를 바로잡고, SECURITY.md에 지원 버전과 한국어 요약을 넣었습니다 / Docs audit: fixed menu names, the uninstall note on restoring Codex `notify`, how to connect Codex, English terms, grammar and missing lines, and Korean particles; SECURITY.md now lists supported versions and has a Korean summary
 - 문서: GitHub에서 깨진 링크로 보이던 버튼·단축키 표기를 고치고, README 라이선스 절에 두 라이선스 파일 링크를 넣었습니다. CI가 공개 문서의 빈 절·깨진 링크·한영 제목 짝을 검사합니다 / Docs: fixed button and shortcut notes that GitHub rendered as broken links, linked both license files from the README, and CI now checks public docs for empty sections, broken links and Korean/English heading parity
 - KMttt X 버튼의 [창 닫기]를 [트레이로 숨기기]로 바꿔, 터미널 창을 닫는 [창 닫기]와 헷갈리지 않게 했습니다. 동작은 같습니다 / The KMttt window's "Close window" choice is now "Hide to tray", so it is not confused with closing a pane; behavior is unchanged
