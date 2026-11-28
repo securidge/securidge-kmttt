@@ -115,6 +115,14 @@ Windows에서는 터미널 창을 닫거나, 창의 셸이 끝나거나, KMttt�
 
 **Windows PowerShell에서 Codex 실행:** 창에 직접 `codex`를 입력하면 PowerShell이 npm의 `codex.ps1`을 선택해 실행 정책으로 차단할 수 있습니다(`PSSecurityException`). 대신 `codex.cmd`를 입력하거나 **[에이전트 실행] → Codex**를 사용하세요. [에이전트 실행]은 필요한 경우 이미 `.cmd`를 선택하므로 PowerShell 실행 정책을 바꿀 필요가 없습니다.
 
+### Codex 연동(선택)
+
+`kmttt integration install codex`를 실행하면 Codex의 `notify`를 KMttt에 연결하고 KMttt 에이전트 스킬도 설치합니다. 다른 `notify` 설정이 이미 있으면 기본적으로 덮어쓰기를 거부합니다.
+
+기존 설정을 보관하고 교체하려면 `kmttt integration install codex --replace`를 실행하세요. KMttt 연동 중에는 기존 알림 실행이 중단됩니다. Codex 앱의 computer-use처럼 해당 알림에 의존하는 기능도 연동을 해제할 때까지 중단될 수 있습니다.
+
+`kmttt integration uninstall codex`로 연동을 해제하면 보관한 알림을 복원합니다. 단, 설치된 KMttt `notify`를 직접 다른 값으로 바꿨다면 현재 설정과 보관한 알림은 그대로 둡니다.
+
 ## 6. 승인 요청에 답하기
 
 한 창의 에이전트가 **다른 창**에 명령을 넣거나, 글자를 입력하거나, 내용을 읽으려 하면 KMttt가 먼저 사람에게 묻습니다. 프롬프트 인젝션(에이전트가 읽은 글에 숨은 명령)에 속은 에이전트가 다른 작업을 건드리는 것을 막기 위해서입니다.
@@ -192,7 +200,7 @@ Claude Code는 남은 사용량을 **공식 상태 줄(statusLine) 입력**으�
 
 ### Codex
 
-연결이 필요 없습니다. Codex가 남기는 세션 기록(`~/.codex/sessions/**/rollout-*.jsonl`, 압축된 `.jsonl.zst` 포함)의 마지막 사용량 값을 읽습니다. `CODEX_HOME`을 바꿨다면 그 아래 `sessions`를 읽습니다. Codex를 한 번 쓰면 표시됩니다.
+이 사용량 표시에는 연동이 필요 없습니다. Codex가 남기는 세션 기록(`~/.codex/sessions/**/rollout-*.jsonl`, 압축된 `.jsonl.zst` 포함)의 마지막 사용량 값을 읽습니다. `CODEX_HOME`을 바꿨다면 그 아래 `sessions`를 읽습니다. Codex를 한 번 쓰면 표시됩니다.
 
 명령줄에서는 `kmttt usage`로 같은 값을 JSON으로 볼 수 있습니다.
 

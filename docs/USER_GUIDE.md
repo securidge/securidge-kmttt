@@ -112,6 +112,14 @@ Right-click a pane → "Why is the agent in this state?" shows the evidence.
 
 **Codex in Windows PowerShell:** if you type `codex` directly in a pane, PowerShell may select npm's `codex.ps1` and block it under its execution policy (`PSSecurityException`). Run `codex.cmd` instead, or use **[Launch agent] → Codex**, which already selects the `.cmd` launcher when needed. You do not need to change PowerShell's execution policy.
 
+### Optional Codex integration
+
+Run `kmttt integration install codex` to connect Codex's `notify` to KMttt and install the KMttt agent skill. If another `notify` setting already exists, the command refuses to overwrite it by default.
+
+To save and replace that setting, run `kmttt integration install codex --replace`. The previous notifier is disabled while the KMttt integration is installed. Features that depend on it, such as computer use in the Codex app, may stop until you remove the integration.
+
+Run `kmttt integration uninstall codex` to remove the integration and restore the saved notifier. If you have replaced KMttt's installed `notify` yourself, removal leaves your current setting and the saved notifier unchanged.
+
 ## 6. Answering approval requests
 
 When an agent in one pane tries to run a command in, type into, or read **another pane**, KMttt asks a person first. This stops an agent that was tricked by a prompt injection from tampering with your other work.
@@ -184,7 +192,7 @@ When less than 15% is left the bar turns red and the approval banner tells you o
 
 ### Codex
 
-Nothing to connect. KMttt reads the latest usage sample from Codex's session logs (`~/.codex/sessions/**/rollout-*.jsonl`, including compressed `.jsonl.zst`; under `$CODEX_HOME` if set). It shows after you use Codex once.
+No integration is needed for this usage display. KMttt reads the latest usage sample from Codex's session logs (`~/.codex/sessions/**/rollout-*.jsonl`, including compressed `.jsonl.zst`; under `$CODEX_HOME` if set). It shows after you use Codex once.
 
 `kmttt usage` prints the same data as JSON.
 

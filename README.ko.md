@@ -110,6 +110,8 @@ KMttt 창 안에서 일하는 방법을 Claude Code와 Codex에게 알려 주는
 - **Codex**: [`plugins/kmttt/skills/kmttt`](plugins/kmttt/skills/kmttt) 폴더를 `~/.agents/skills/kmttt`(또는 저장소의 `.agents/skills/kmttt`)에 복사
 - **SKILL.md를 읽는 그 밖의 도구**: `npx skills add securidge/securidge-kmttt`
 
+**기존 Codex 알림:** `kmttt integration install codex`는 다른 `notify` 설정이 이미 있으면 기본적으로 덮어쓰기를 거부합니다. 보관 후 교체하려면 `kmttt integration install codex --replace`를 실행하세요. KMttt 연동 중에는 기존 알림 실행이 중단되며, Codex 앱의 computer-use처럼 해당 알림에 의존하는 기능도 중단될 수 있습니다. `kmttt integration uninstall codex`로 연동을 해제하면 보관한 알림을 복원합니다. 단, 설치된 KMttt `notify`를 직접 다른 값으로 바꿨다면 현재 설정과 보관한 알림은 그대로 둡니다.
+
 ## 파일 위치
 
 | | Linux / macOS | Windows |
