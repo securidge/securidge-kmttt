@@ -48,6 +48,12 @@ fn decide_pending(
         .iter_mut()
         .find(|a| a.info.id == id)
         .ok_or_else(|| RpcError::not_found(format!("no pending approval #{id}")))?;
+    // ask() removes the entry after waking; reject repeats during that interval.
+    if a.tx.is_none() {
+        return Err(RpcError::invalid_params(format!(
+            "approval #{id} already decided"
+        )));
+    }
     // Reject invalid decisions before consuming the sender or changing grants.
     // The person can then retry the same pending request as a single decision.
     if allow && session && a.grant_key.is_none() {
@@ -652,6 +658,42 @@ mod tests {
         assert_eq!(unknown.try_recv(), Err(oneshot::error::TryRecvError::Empty));
         assert_eq!(st.session_grants.len(), 1);
         assert_eq!(st.session_grants[0].key, "same-key");
+    }
+
+    #[test]
+    fn already_decided_request_cannot_be_changed_or_create_session_grant() {
+        for first_allow in [false, true] {
+            let mut st = State::new();
+            let mut first = enqueue(&mut st, 1, Some("same-key"));
+            let mut peer = enqueue(&mut st, 2, Some("same-key"));
+            decide_pending(&mut st, 1, first_allow, false).unwrap();
+            assert_eq!(first.try_recv(), Ok(first_allow));
+            for (allow, session) in [(true, true), (true, false), (false, false), (false, true)] {
+                let error = decide_pending(&mut st, 1, allow, session).unwrap_err();
+                assert_eq!(error.code, codes::INVALID_PARAMS);
+                assert!(error.message.contains("already decided"));
+                assert!(st.session_grants.is_empty());
+                assert_eq!(peer.try_recv(), Err(oneshot::error::TryRecvError::Empty));
+                assert!(st.approvals[0].tx.is_none());
+                assert!(st.approvals[1].tx.is_some());
+            }
+        }
+    }
+
+    #[test]
+    fn request_resolved_by_session_batch_cannot_be_decided_again() {
+        let mut st = State::new();
+        let mut first = enqueue(&mut st, 1, Some("same-key"));
+        let mut peer = enqueue(&mut st, 2, Some("same-key"));
+        let mut other = enqueue(&mut st, 3, Some("other-key"));
+        decide_pending(&mut st, 1, true, true).unwrap();
+        assert_eq!(first.try_recv(), Ok(true));
+        assert_eq!(peer.try_recv(), Ok(true));
+        let error = decide_pending(&mut st, 2, true, true).unwrap_err();
+        assert!(error.message.contains("already decided"));
+        assert_eq!(st.session_grants.len(), 1);
+        assert_eq!(st.session_grants[0].key, "same-key");
+        assert_eq!(other.try_recv(), Err(oneshot::error::TryRecvError::Empty));
     }
 
     fn pane(id: &str) -> Caller {
