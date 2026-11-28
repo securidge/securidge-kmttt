@@ -76,6 +76,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          # 문서 점검(ci/check-docs.js)이 릴리스 노트의 태그 고정 주소를 실제 태그로 확인하도록 태그까지 받는다.
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@1.97.0
         with:
           components: clippy, rustfmt
