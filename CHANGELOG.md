@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.4 — 미출시 / Unreleased
+
+- Codex notify 연결은 WSL·콘솔 호스트·원격 셸 실행 파일을 거부하고 실행 결과를 감사 로그에 남깁니다(서버가 없으면 생략). / Codex notify chaining rejects shell forwarding hosts and audits execution outcomes when a server is available.
+
 ## 1.3.3 — 2026-11-28
 
 - Windows E2E 점검은 KMttt 창 안에서 실행하면 안내 후 중단하며, 로컬 리다이렉트 핸들 누수 검사를 `cmd /c`와 따옴표로 감싼 경로로 수행합니다 / Windows E2E checks refuse to run inside KMttt and use `cmd /c` with quoted paths for the local redirect handle leak check

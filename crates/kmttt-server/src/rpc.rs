@@ -19,6 +19,38 @@ pub struct Conn {
     pub pid: Option<u32>,
 }
 
+// Fixed vocabulary prevents clients from forging arbitrary audit prose/kinds
+// or attaching notification contents and command arguments to the ledger.
+fn notify_chain_event(p: &Value) -> Result<(Severity, &'static str, &'static str), RpcError> {
+    let obj = p
+        .as_object()
+        .filter(|o| o.len() == 1)
+        .ok_or_else(|| RpcError::invalid_params("expected only phase"))?;
+    match obj.get("phase").and_then(Value::as_str) {
+        Some("started") => Ok((
+            Severity::Info,
+            "integration.notify_chain.started",
+            "Codex previous notifier execution started",
+        )),
+        Some("completed") => Ok((
+            Severity::Info,
+            "integration.notify_chain.completed",
+            "Codex previous notifier completed successfully",
+        )),
+        Some("failed") => Ok((
+            Severity::Notice,
+            "integration.notify_chain.failed",
+            "Codex previous notifier execution failed",
+        )),
+        Some("timed_out") => Ok((
+            Severity::Notice,
+            "integration.notify_chain.timed_out",
+            "Codex previous notifier exceeded its execution deadline",
+        )),
+        _ => Err(RpcError::invalid_params("invalid notify chain phase")),
+    }
+}
+
 fn s(p: &Value, k: &str) -> Option<String> {
     p.get(k)
         .and_then(|v| v.as_str())
@@ -807,6 +839,17 @@ pub async fn call(
             Ok(to_json(&pol.cfg))
         }
         "hook.event" => hook_event(server, conn, p).await,
+        "hook.notify_chain" => {
+            let (severity, kind, detail) = notify_chain_event(p)?;
+            // Unlike hook.event this is observation only, including outside a
+            // pane. Attribute it to the transport identity, never client input.
+            let target = match &conn.caller {
+                Caller::Pane { pane, .. } => pane.as_str(),
+                _ => "codex",
+            };
+            server.security_event(severity, kind, &conn.caller.label(), target, detail);
+            Ok(json!({"recorded": true}))
+        }
         "plugin.list" => {
             let ps = server
                 .plugins
@@ -1226,6 +1269,27 @@ async fn hook_event(server: &Arc<Server>, conn: &Conn, p: &Value) -> Result<Valu
 
 #[cfg(test)]
 mod cmd_shim_tests {
+    #[test]
+    fn notify_chain_audit_accepts_only_fixed_phases_without_client_attribution() {
+        use super::*;
+        for phase in ["started", "completed", "failed", "timed_out"] {
+            let (_, kind, _) = notify_chain_event(&json!({"phase":phase})).unwrap();
+            assert_eq!(kind, format!("integration.notify_chain.{phase}"));
+            for key in ["caller", "target", "kind", "detail", "argv", "payload"] {
+                let mut params = json!({"phase":phase});
+                params[key] = json!("forged");
+                assert!(notify_chain_event(&params).is_err());
+            }
+        }
+        for params in [
+            json!(null),
+            json!({}),
+            json!({"phase":"bogus"}),
+            json!({"phase":5}),
+        ] {
+            assert!(notify_chain_event(&params).is_err());
+        }
+    }
     use super::cmd_shim_in_dirs;
     use std::path::Path;
 

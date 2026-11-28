@@ -913,7 +913,15 @@ pub async fn hook(agent: &str, event: &str, arg_payload: Option<String>) -> Resu
     if std::env::var_os(crate::notify_chain::ACTIVE_ENV).is_none() {
         let result = async {
             if let Some(argv) = registered_codex_chain()? {
-                crate::notify_chain::run(&argv, &raw).await?;
+                audit_notify_chain("started").await;
+                let result = crate::notify_chain::run(&argv, &raw).await;
+                let phase = match &result {
+                    Ok(()) => "completed",
+                    Err(e) if e.is::<kmttt_pty::bounded::DeadlineExceeded>() => "timed_out",
+                    Err(_) => "failed",
+                };
+                audit_notify_chain(phase).await;
+                result?;
             }
             Ok::<(), anyhow::Error>(())
         }
@@ -923,6 +931,22 @@ pub async fn hook(agent: &str, event: &str, arg_payload: Option<String>) -> Resu
         }
     }
     Ok(0)
+}
+
+// Observation only: never start a server, log argv/payload, or block notify on
+// an unavailable/busy audit connection. Each event has a total 200 ms budget.
+async fn audit_notify_chain(phase: &str) {
+    let session = std::env::var("KMTTT_SESSION")
+        .or_else(|_| std::env::var("KMTTT_SESSION_NAME"))
+        .unwrap_or_else(|_| "default".into());
+    let _ = tokio::time::timeout(Duration::from_millis(200), async {
+        let (client, _notes) = RpcClient::connect_local(&session).await?;
+        client
+            .call("hook.notify_chain", json!({"phase": phase}))
+            .await?;
+        Ok::<(), anyhow::Error>(())
+    })
+    .await;
 }
 
 async fn hook_report(agent: &str, event: &str, arg_payload: Option<String>) -> Result<i32> {

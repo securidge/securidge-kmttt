@@ -171,6 +171,250 @@ impl Fixture {
 const PAYLOAD: &str =
     "{ \"type\":\"agent-turn-complete\", \"notify\":[\"ignored\"], \"text\":\"& echo nope\" }";
 
+#[test]
+fn shell_forwarding_executables_are_rejected_before_config_writes() {
+    let f = Fixture::new();
+    for name in [
+        "wsl",
+        "wslhost",
+        "conhost",
+        "OpenConsole",
+        "wt",
+        "WindowsTerminal",
+        "winpty",
+        "winpty-agent",
+        "ssh",
+        "plink",
+    ] {
+        let path = f.root.path().join(format!("{name}.exe"));
+        std::fs::copy(&f.probe, &path).unwrap();
+        let mut argv = f.argv();
+        argv[0] = path.to_str().unwrap().into();
+        let original = f.configure(&argv);
+        let out = f.cli(&["integration", "install", "codex", "--chain"]);
+        assert!(!out.status.success(), "accepted {name}");
+        assert_eq!(std::fs::read_to_string(&f.config).unwrap(), original);
+        assert!(!f.sidecar().exists());
+    }
+}
+
+struct TestServer(std::process::Child);
+
+#[test]
+fn previously_registered_shell_forwarder_is_rejected_at_hook_runtime() {
+    let f = Fixture::new();
+    f.configure(&f.argv());
+    f.ok(&["integration", "install", "codex", "--chain"]);
+    let proxy = f.root.path().join("ConHost.exe");
+    std::fs::copy(&f.probe, &proxy).unwrap();
+    let path = proxy.canonicalize().unwrap().to_str().unwrap().to_owned();
+    let mut record: Value = serde_json::from_slice(&std::fs::read(f.sidecar()).unwrap()).unwrap();
+    let mut previous: Vec<String> =
+        serde_json::from_str(record["previous_notify"].as_str().unwrap()).unwrap();
+    previous[0] = path.clone();
+    record["previous_notify"] = json!(serde_json::to_string(&previous).unwrap());
+    record["chain_argv"][0] = json!(path);
+    std::fs::write(f.sidecar(), record.to_string()).unwrap();
+    let out = f.ok(&["hook", "codex", "notify", PAYLOAD]);
+    assert!(String::from_utf8_lossy(&out.stderr).contains("shell forwarding"));
+    assert!(!f.capture.exists());
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn unresponsive_audit_server_does_not_block_previous_notifier() {
+    let f = Fixture::new();
+    f.configure(&f.argv());
+    f.ok(&["integration", "install", "codex", "--chain"]);
+    let mut pipe = tokio::net::windows::named_pipe::ServerOptions::new()
+        .first_pipe_instance(true)
+        .create(kmttt_core::paths::socket_path(&f.session))
+        .unwrap();
+    let (seen_tx, seen_rx) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+        pipe.connect().await.unwrap();
+        let frame = kmttt_proto::read_frame(&mut pipe).await.unwrap().unwrap();
+        let request = kmttt_proto::RpcMessage::from_bytes(&frame).unwrap();
+        let response =
+            kmttt_proto::RpcMessage::response(request.id.unwrap(), Ok(json!({"decision":"allow"})));
+        kmttt_proto::write_frame(&mut pipe, &response.to_bytes())
+            .await
+            .unwrap();
+        pipe.disconnect().unwrap();
+        pipe.connect().await.unwrap();
+        let frame = kmttt_proto::read_frame(&mut pipe).await.unwrap().unwrap();
+        let request = kmttt_proto::RpcMessage::from_bytes(&frame).unwrap();
+        assert_eq!(request.method.as_deref(), Some("hook.notify_chain"));
+        seen_tx.send(()).unwrap();
+        tokio::time::sleep(Duration::from_secs(10)).await;
+    });
+    let start = Instant::now();
+    let mut command = f.command();
+    command.args(["hook", "codex", "notify", PAYLOAD]);
+    let out = tokio::task::spawn_blocking(move || command.output().unwrap())
+        .await
+        .unwrap();
+    server.abort();
+    assert!(start.elapsed() < Duration::from_secs(2));
+    seen_rx.await.unwrap();
+    assert!(out.status.success());
+    assert!(out.stderr.is_empty());
+    assert!(f.capture.exists());
+}
+
+impl Drop for TestServer {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+#[tokio::test]
+async fn previous_notifier_outcomes_reach_server_audit_without_payload_or_argv() {
+    use kmttt_core::client::RpcClient;
+    let f = Fixture::new();
+    f.configure(&f.argv());
+    f.ok(&["integration", "install", "codex", "--chain"]);
+    let mut server = TestServer(f.command().args(["server", "run"]).spawn().unwrap());
+    let started = Instant::now();
+    let (client, _notes) = loop {
+        if let Ok(c) = RpcClient::connect_local(&f.session).await {
+            break c;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(8),
+            "test server not ready: {:?}",
+            server.0.try_wait()
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    };
+    for (mode, outcome) in [
+        ("record", "completed"),
+        ("fail", "failed"),
+        ("hang", "timed_out"),
+        ("broken", "failed"),
+    ] {
+        if mode == "broken" {
+            // Header validation still passes, but OS process creation fails.
+            std::fs::write(
+                &f.probe,
+                if cfg!(windows) {
+                    &b"MZ!!"[..]
+                } else {
+                    &b"\x7fELF"[..]
+                },
+            )
+            .unwrap();
+        }
+        let mut command = f.command();
+        command
+            .env(MODE, mode)
+            .args(["hook", "codex", "notify", PAYLOAD]);
+        let out = tokio::task::spawn_blocking(move || command.output().unwrap())
+            .await
+            .unwrap();
+        assert!(out.status.success());
+        let snapshot = client.call("control.snapshot", json!({})).await.unwrap();
+        let events: Vec<_> = snapshot["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|e| {
+                e["kind"]
+                    .as_str()
+                    .unwrap_or("")
+                    .starts_with("integration.notify_chain.")
+            })
+            .collect();
+        assert!(
+            events
+                .iter()
+                .any(|e| e["kind"] == format!("integration.notify_chain.{outcome}")),
+            "{snapshot}"
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| e["kind"] == "integration.notify_chain.started")
+                .count(),
+            match mode {
+                "record" => 1,
+                "fail" => 2,
+                "hang" => 3,
+                _ => 4,
+            }
+        );
+        for e in events {
+            assert!(e["caller"].as_str().is_some_and(|s| !s.is_empty()));
+            let text = e.to_string();
+            assert!(!text.contains("echo nope"));
+            assert!(!text.contains("space argument"));
+            assert!(
+                !text.contains("fixture-pane"),
+                "client environment must not forge attribution"
+            );
+        }
+    }
+    assert!(client
+        .call(
+            "hook.notify_chain",
+            json!({"phase":"failed", "caller":"user", "detail":"secret"})
+        )
+        .await
+        .is_err());
+    // Verify durable ledger output too, rather than only the in-memory view.
+    let ledger = f.root.path().join("data").join("ledger").join(&f.session);
+    let records: Vec<Value> = std::fs::read_dir(ledger)
+        .unwrap()
+        .flatten()
+        .filter(|e| {
+            e.file_name().to_string_lossy().starts_with("ledger-")
+                && e.path().extension().is_some_and(|e| e == "jsonl")
+        })
+        .flat_map(|e| {
+            std::fs::read_to_string(e.path())
+                .unwrap()
+                .lines()
+                .map(|s| serde_json::from_str::<Value>(s).unwrap())
+                .collect::<Vec<_>>()
+        })
+        .filter(|e| {
+            e["kind"] == "security.event"
+                && e["data"]["kind"]
+                    .as_str()
+                    .is_some_and(|s| s.starts_with("integration.notify_chain."))
+        })
+        .collect();
+    assert_eq!(records.len(), 8);
+    let text = serde_json::to_string(&records).unwrap();
+    assert!(!text.contains("echo nope"));
+    assert!(!text.contains("space argument"));
+    assert_eq!(
+        records
+            .iter()
+            .filter(|e| e["data"]["kind"] == "integration.notify_chain.failed")
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn absent_server_silently_skips_audit_and_does_not_start_a_server() {
+    let f = Fixture::new();
+    f.configure(&f.argv());
+    f.ok(&["integration", "install", "codex", "--chain"]);
+    let start = Instant::now();
+    let out = f.ok(&["hook", "codex", "notify", PAYLOAD]);
+    assert!(start.elapsed() < Duration::from_secs(5));
+    assert!(
+        out.stderr.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(f.capture.exists());
+    assert!(!f.root.path().join("data").join("ledger").exists());
+}
+
 #[cfg(windows)]
 #[tokio::test]
 async fn kmttt_report_finishes_before_the_previous_notifier_runs() {

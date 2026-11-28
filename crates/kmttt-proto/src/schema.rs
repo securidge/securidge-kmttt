@@ -157,6 +157,7 @@ pub const METHODS: &[(&str, &str, &str)] = &[
         "Tool-call hook event from an agent",
         "agent, phase, payload",
     ),
+    ("hook.notify_chain", "Codex previous notifier audit event (fixed phases)", "phase"),
     ("plugin.list", "Installed plugins", ""),
     ("schema", "This OpenRPC document", ""),
 ];
