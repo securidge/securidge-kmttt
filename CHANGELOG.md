@@ -2,6 +2,7 @@
 
 ## 1.3.3 — 미출시 / Unreleased
 
+- Codex notify 연결은 WSL·콘솔 호스트·원격 셸 실행 파일을 거부하고 실행 결과를 감사 로그에 남깁니다(서버가 없으면 생략). / Codex notify chaining rejects shell forwarding hosts and audits execution outcomes when a server is available.
 - Windows E2E 점검은 KMttt 창 안에서 실행하면 안내 후 중단하며, 로컬 리다이렉트 핸들 누수 검사를 `cmd /c`와 인용한 경로로 수행합니다 / Windows E2E checks refuse to run inside KMttt and use `cmd /c` with quoted paths for the local redirect handle leak check
 - Windows E2E 점검을 로컬에서 임시 세션·폴더로 분리하고 종료 시 정리합니다. 로컬 `default` 세션 지정은 `-Force` 없이는 거부합니다 / Local Windows E2E checks use temporary sessions and directories with cleanup; selecting `default` locally requires `-Force`
 - Codex 연동의 `--chain`은 명시적으로 등록한 기존 native notify를 셸 해석 없이 KMttt 보고 뒤에 호출합니다(3초 제한). `--replace`와 보관본은 해제 복원 동작을 유지합니다 / Codex integration supports opt-in `--chain` to call the registered native notifier after KMttt without shell interpretation, with a three-second limit; `--replace` and uninstall restoration remain supported

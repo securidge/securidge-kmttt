@@ -111,7 +111,7 @@ pub fn classify_action(action: &str) -> ActionClass {
             ActionClass::Control
         }
         "pane.split" | "tab.create" | "workspace.create" | "worktree.create" => ActionClass::Create,
-        "hook.event" => ActionClass::Hook,
+        "hook.event" | "hook.notify_chain" => ActionClass::Hook,
         "approval.decide"
         | "approval.revoke"
         | "server.stop"

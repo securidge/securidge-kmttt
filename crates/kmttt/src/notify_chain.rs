@@ -77,9 +77,20 @@ pub(crate) fn validate(argv: &[String]) -> Result<()> {
             | "tcsh"
             | "fish"
             | "nu"
+            // Known shell/command forwarding hosts, including remote shells.
+            | "wsl"
+            | "wslhost"
+            | "conhost"
+            | "openconsole"
+            | "wt"
+            | "windowsterminal"
+            | "winpty"
+            | "winpty-agent"
+            | "ssh"
+            | "plink"
     ) || std::env::current_exe()?.canonicalize()? == path
     {
-        bail!("chain does not execute KMttt itself or shell programs");
+        bail!("chain does not execute KMttt itself, shells or shell forwarding programs");
     }
     #[cfg(windows)]
     if !path

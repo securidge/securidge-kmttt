@@ -3,6 +3,18 @@ use anyhow::{Context, Result};
 use std::process::ExitStatus;
 use std::time::Duration;
 
+/// A deadline expired after terminating the notifier and its descendants.
+#[derive(Debug)]
+pub struct DeadlineExceeded(pub Duration);
+
+impl std::fmt::Display for DeadlineExceeded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "previous notifier exceeded {} ms", self.0.as_millis())
+    }
+}
+
+impl std::error::Error for DeadlineExceeded {}
+
 #[cfg(unix)]
 struct ProcessGroup {
     pid: i32,
@@ -71,7 +83,7 @@ pub async fn run(mut command: tokio::process::Command, limit: Duration) -> Resul
             group.terminate();
             let _ = child.kill().await;
             let _ = child.wait().await;
-            anyhow::bail!("previous notifier exceeded {} ms", limit.as_millis());
+            Err(DeadlineExceeded(limit).into())
         }
     }
 }
