@@ -184,6 +184,10 @@
     return text;
   }
   function describePane(id) {
+    // 승인 요청의 호출자는 "w2:p6(codex)"처럼 창 번호 뒤에 에이전트 이름이 붙어 온다.
+    const m = /^([^()]+)\((.*)\)$/.exec(String(id || ""));
+    if (m && !paneInfo(id)) id = m[1];
+    if (id === "unknown") return t("ap.pane_unknown");
     const p = paneInfo(id);
     if (!p) return String(id || "");
     const ws = snap().workspaces.find((w) => w.id === p.workspace);
