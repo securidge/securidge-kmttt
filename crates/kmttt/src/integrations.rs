@@ -300,6 +300,14 @@ pub fn installed(agent: &str) -> Result<bool> {
         let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
         return Ok(statusline_is_ours(&v));
     }
+    if agent == "codex" {
+        // install이 쓰는 TOML 배열 형태: notify = ["…kmttt…", "hook", "codex", "notify"]
+        return Ok(text.lines().any(|l| {
+            l.trim_start().starts_with("notify")
+                && l.contains("kmttt")
+                && l.contains("\"hook\", \"codex\"")
+        }));
+    }
     Ok(text.contains(&format!("hook {agent}")) && text.contains("kmttt"))
 }
 
@@ -669,7 +677,13 @@ mod tests {
         let f = d.path().join("config.toml");
         std::fs::write(&f, "model = \"o4\"\n\n[profiles.fast]\nmodel = \"mini\"\n").unwrap();
         std::env::set_var("KMTTT_CODEX_CONFIG", &f);
+        assert!(!installed("codex").unwrap());
         install("codex").unwrap();
+        // status와 앱 시작 시 스킬 갱신(sync_skills)이 모두 이 판정을 쓴다
+        assert!(
+            installed("codex").unwrap(),
+            "status must see the notify line install wrote"
+        );
         let text = std::fs::read_to_string(&f).unwrap();
         let notify = text.find("notify").unwrap();
         let table = text.find("[profiles.fast]").unwrap();
@@ -679,10 +693,12 @@ mod tests {
         let skill = d.path().join(".agents").join("skills").join("kmttt");
         assert!(skill.join("SKILL.md").exists());
         uninstall("codex").unwrap();
+        assert!(!installed("codex").unwrap());
         assert!(!skill.exists());
         assert!(!std::fs::read_to_string(&f).unwrap().contains("notify"));
         // 사용자가 직접 둔 notify는 건드리지 않는다
         std::fs::write(&f, "notify = [\"my-notifier\"]\n").unwrap();
+        assert!(!installed("codex").unwrap());
         assert!(install("codex").is_err());
         std::env::remove_var("KMTTT_CODEX_CONFIG");
     }
