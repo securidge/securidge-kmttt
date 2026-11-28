@@ -112,6 +112,8 @@ KMttt ships an agent skill that teaches Claude Code and Codex how to work inside
 
 **Existing Codex notifications:** `kmttt integration install codex` refuses to overwrite another `notify` setting by default. To save and replace it, run `kmttt integration install codex --replace`. This disables the previous notifier while the KMttt integration is installed; features that depend on it (such as computer use in the Codex app) may stop until you remove the integration with `kmttt integration uninstall codex`. Removal restores the saved notifier if KMttt's installed `notify` is still present; if you have replaced it yourself, your current setting and the saved notifier are left unchanged.
 
+To keep calling the previous notifier, explicitly opt in with `kmttt integration install codex --chain` instead of `--replace`. KMttt reporting is attempted first with a 1-second limit, then the registered previous notifier is called with a separate 3-second limit. Only the native executable resolved and registered at installation is used, without shell interpretation; shells and scripts, including `.cmd`/`.bat` files, are rejected as the notifier program (Windows requires a native `.exe`). Both modes require valid TOML, save the original setting for restoration on uninstall, and cannot be combined.
+
 ## Files
 
 | | Linux / macOS | Windows |
