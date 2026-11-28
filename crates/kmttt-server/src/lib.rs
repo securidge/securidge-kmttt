@@ -586,6 +586,9 @@ pub async fn run(opts: ServerOptions) -> Result<()> {
     server.emit("server.stop", "server", json!({}));
     if let Ok(mut st) = server.st.lock() {
         for p in st.panes.values_mut() {
+            if let Some(job) = &p.job {
+                job.terminate();
+            }
             if let Some(pty) = p.pty.as_mut() {
                 pty.kill();
             }

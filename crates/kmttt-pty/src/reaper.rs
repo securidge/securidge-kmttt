@@ -173,7 +173,11 @@ impl PaneJob {
     #[cfg(windows)]
     pub fn attach(pid: u32) -> Option<Self> {
         use windows_sys::Win32::Foundation::CloseHandle;
-        use windows_sys::Win32::System::JobObjects::{AssignProcessToJobObject, CreateJobObjectW};
+        use windows_sys::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+            SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        };
         use windows_sys::Win32::System::Threading::{
             OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE,
         };
@@ -181,6 +185,18 @@ impl PaneJob {
         unsafe {
             let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
             if job.is_null() {
+                return None;
+            }
+            let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            if SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
+                std::mem::size_of_val(&limits) as u32,
+            ) == 0
+            {
+                CloseHandle(job);
                 return None;
             }
             let proc_ = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid);
@@ -228,12 +244,25 @@ impl PaneJob {
     pub fn contains(&self, _pid: u32) -> bool {
         false
     }
+
+    /// Stop all pane processes now, even if identification still holds an Arc.
+    pub fn terminate(&self) {
+        #[cfg(windows)]
+        {
+            // SAFETY: attach owns this live Job handle until Drop.
+            if unsafe { windows_sys::Win32::System::JobObjects::TerminateJobObject(self.job, 1) }
+                == 0
+            {
+                tracing::warn!(error = %std::io::Error::last_os_error(), "terminate pane job failed");
+            }
+        }
+    }
 }
 
 #[cfg(windows)]
 impl Drop for PaneJob {
     fn drop(&mut self) {
-        // SAFETY: attach에서 만든 핸들을 한 번만 닫는다. Job을 닫아도 안의 프로세스는 계속 돈다.
+        // SAFETY: attach에서 만든 핸들을 한 번만 닫는다. 마지막 핸들이 닫히면 자손도 종료된다.
         unsafe {
             windows_sys::Win32::Foundation::CloseHandle(self.job);
         }
@@ -339,6 +368,59 @@ mod macos_tests {
 #[cfg(all(test, windows))]
 mod windows_tests {
     use super::*;
+
+    #[test]
+    fn job_drop_and_explicit_termination_stop_processes() {
+        use std::os::windows::process::CommandExt;
+        use std::sync::Arc;
+        use std::time::{Duration, Instant};
+        use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+
+        for (explicit, nested) in [(false, false), (true, false), (false, true), (true, true)] {
+            let mut child = std::process::Command::new("ping.exe")
+                .args(["-n", "60", "127.0.0.1"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .unwrap();
+            let job = Arc::new(PaneJob::attach(child.id()).expect("assign test process"));
+            assert!(job.contains(child.id()));
+            assert!(!job.contains(std::process::id()));
+            // A live inner Job must not keep processes alive after the pane ends.
+            let nested_job = nested.then(|| PaneJob::attach(child.id()).expect("nested job"));
+            if let Some(nested_job) = &nested_job {
+                assert!(nested_job.contains(child.id()));
+                assert!(job.contains(child.id()));
+            }
+            // Model identify() retaining a reference while close_pane runs.
+            let observer = explicit.then(|| Arc::clone(&job));
+            if explicit {
+                job.terminate();
+            }
+            drop(job);
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let exited = loop {
+                if child.try_wait().unwrap().is_some() {
+                    break true;
+                }
+                if Instant::now() >= deadline {
+                    break false;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            };
+            // Also clean up if a deliberately broken implementation is tested.
+            if !exited {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            assert!(
+                exited,
+                "pane Job did not end its processes (explicit={explicit}, nested={nested})"
+            );
+            drop(observer);
+            drop(nested_job);
+        }
+    }
 
     #[test]
     fn job_tracks_detached_grandchild() {
