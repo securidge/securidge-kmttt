@@ -30,6 +30,14 @@ function Screen([string]$pane) { (& $K pane read $pane --source screen --lines 3
 # 질문 문장 자체에도 KMTTT-OK가 들어 있으므로, 질문 줄이 아닌 곳에 나온 경우만 답으로 본다.
 function Answered([string]$pane) { @((Screen $pane) -split "`n" | Where-Object { $_ -match "KMTTT-OK" -and $_ -notmatch "Reply with" }).Count -gt 0 }
 
+# npm의 .ps1은 실행 정책에 막힐 수 있다. 네이티브 실행 파일을 먼저 찾고 .cmd를 쓴다.
+function Resolve-AgentCommand([string]$name) {
+    foreach ($ext in @('.exe', '.cmd')) {
+        $found = Get-Command -Name ($name + $ext) -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($found) { return $found }
+    }
+}
+
 $candidates = @(
     @{ name = "claude"; cmd = "claude" },
     @{ name = "codex"; cmd = "codex" },
@@ -44,13 +52,15 @@ if ($Only.Count -gt 0) { $candidates = @($candidates | Where-Object { $Only -con
 foreach ($c in $candidates) {
     $name = $c.name
     $file = "agent-$name.txt"
-    $cmd = Get-Command $c.cmd -ErrorAction SilentlyContinue
+    $cmd = Resolve-AgentCommand $c.cmd
     if (-not $cmd) { Add-Content $summary "$name : not installed"; continue }
     Log $file "== $name ($($cmd.Source))"
     & $K workspace create --label $name --cwd $Work --no-focus | Out-Null
     Start-Sleep -Seconds 3
     $pane = @(Kj pane list)[-1].id
-    & $K pane run $pane $c.cmd | Out-Null
+    # 공백과 작은따옴표가 있는 설치 경로도 PowerShell에서 그대로 실행한다.
+    $launch = "& '" + $cmd.Source.Replace("'", "''") + "'"
+    & $K pane run $pane $launch | Out-Null
     # 시작 화면(로그인·폴더 신뢰 질문 등)을 기다리며 상태를 기록한다.
     $trace = @()
     for ($i = 0; $i -lt 20; $i++) {

@@ -91,6 +91,8 @@ Press **[? Guide]** (F1) for getting started, how-tos, shortcuts, a glossary, an
 | See every agent | [Control center] tab | Ctrl+Shift+O |
 | Larger / smaller text | View menu | Ctrl+= / Ctrl+- |
 
+On Windows, closing a terminal pane also ends all its descendant processes, including GUI apps first launched from that pane (such as VS Code or a browser opened for sign-in). Open apps you want to keep using outside KMttt, or start them before launching them from a pane.
+
 ## 5. Working with AI agents
 
 - **Start**: [Launch agent] and pick one. The program must be installed (Claude Code needs the `claude` command). "In a new pane to the right" splits the screen and starts it there.
@@ -107,6 +109,8 @@ Press **[? Guide]** (F1) for getting started, how-tos, shortcuts, a glossary, an
 | ? unknown | The screen does not tell | Look at the pane |
 
 Right-click a pane → "Why is the agent in this state?" shows the evidence.
+
+**Codex in Windows PowerShell:** if you type `codex` directly in a pane, PowerShell may select npm's `codex.ps1` and block it under its execution policy (`PSSecurityException`). Run `codex.cmd` instead, or use **[Launch agent] → Codex**, which already selects the `.cmd` launcher when needed. You do not need to change PowerShell's execution policy.
 
 ## 6. Answering approval requests
 
