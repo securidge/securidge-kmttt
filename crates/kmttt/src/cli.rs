@@ -427,8 +427,11 @@ pub enum IntegrationCmd {
     Install {
         agent: String,
         /// codex/claude-usage: 기존 notify/상태 줄을 보관하고 교체한다(해제 시 복원)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "chain")]
         replace: bool,
+        /// codex: 기존 notify를 KMttt 보고 뒤에 실행한다(3초 제한, 해제 시 원래 설정 복원)
+        #[arg(long, conflicts_with = "replace")]
+        chain: bool,
     },
     Uninstall {
         agent: String,

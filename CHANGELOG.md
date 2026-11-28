@@ -2,6 +2,7 @@
 
 ## 1.3.3 — 미출시 / Unreleased
 
+- Codex 연동의 `--chain`은 명시적으로 등록한 기존 native notify를 셸 해석 없이 KMttt 보고 뒤에 호출합니다(3초 제한). `--replace`와 보관본은 해제 복원 동작을 유지합니다 / Codex integration supports opt-in `--chain` to call the registered native notifier after KMttt without shell interpretation, with a three-second limit; `--replace` and uninstall restoration remain supported
 - 이미 결정된 승인 ID를 다시 결정하면 오류로 거부해 세션 허용이 뒤늦게 추가되지 않도록 했습니다 / Repeated decisions for an already decided approval now return an error without creating a session grant
 - Codex 연동에 `--replace`를 쓰면 기존 notify를 보관하고 해제 시 복원합니다. 설치 출력에 기존 notify와 관련 기능이 일시 중단됨을 안내합니다 / Codex integration can save an existing notify with `--replace` and restore it on uninstall; installation warns that the previous notifier and related features are temporarily disabled
 - 세션 허용이 불가능한 승인 요청에 세션 허용을 보내면 실행을 허용하지 않고 대기 상태를 유지해, 한 번 허용이나 거부로 다시 결정할 수 있습니다 / Invalid session approval decisions leave the request pending without allowing execution, so it can be retried as a single allow or deny

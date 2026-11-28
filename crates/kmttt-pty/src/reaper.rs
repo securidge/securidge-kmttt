@@ -257,6 +257,30 @@ impl PaneJob {
             }
         }
     }
+
+    /// Only the bounded notifier runner uses this after a successful exit.
+    /// Its intentional background children remain in the enclosing pane/sandbox.
+    #[cfg(windows)]
+    pub(crate) fn preserve_descendants(&self) -> std::io::Result<()> {
+        use windows_sys::Win32::System::JobObjects::{
+            JobObjectExtendedLimitInformation, SetInformationJobObject,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        };
+        // SAFETY: only this Job's kill-on-close flag is cleared, not any enclosing Job.
+        unsafe {
+            let limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            if SetInformationJobObject(
+                self.job,
+                JobObjectExtendedLimitInformation,
+                (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
+                std::mem::size_of_val(&limits) as u32,
+            ) == 0
+            {
+                return Err(std::io::Error::last_os_error());
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(windows)]

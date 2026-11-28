@@ -254,8 +254,17 @@ pub fn statusline() -> Result<i32> {
 
 pub fn run(ic: IntegrationCmd) -> Result<i32> {
     match ic {
-        IntegrationCmd::Install { agent, replace } => {
-            let msg = if agent == "claude-usage" {
+        IntegrationCmd::Install {
+            agent,
+            replace,
+            chain,
+        } => {
+            if chain && (agent != "codex" || replace) {
+                bail!("--chain is only for codex and cannot be combined with --replace");
+            }
+            let msg = if chain {
+                install_codex(false, true)?
+            } else if agent == "claude-usage" {
                 install_claude_usage(replace)?
             } else if replace {
                 install_with(&agent, true)?
@@ -318,7 +327,7 @@ pub fn install(agent: &str) -> Result<String> {
 
 fn install_with(agent: &str, replace: bool) -> Result<String> {
     if agent == "codex" {
-        return install_codex(replace);
+        return install_codex(replace, false);
     }
     let f = file_for(agent)?;
     if let Some(d) = f.parent() {
@@ -466,8 +475,10 @@ fn read_codex_previous(f: &std::path::Path, argv: &[String]) -> Result<Option<Va
 }
 
 const CODEX_NOTIFY_PAUSED: &str = "\nExisting Codex notify is disabled while KMttt is installed; related features (such as computer use) may stop until you uninstall the KMttt integration.";
+const CODEX_NOTIFY_CHAINED: &str =
+    "\nPrevious Codex notify is called after KMttt reporting, with a 3 second limit.";
 
-fn install_codex(replace: bool) -> Result<String> {
+fn install_codex(replace: bool, chain: bool) -> Result<String> {
     let f = codex_config();
     let text = match std::fs::read_to_string(&f) {
         Ok(text) => text,
@@ -476,7 +487,7 @@ fn install_codex(replace: bool) -> Result<String> {
     };
     let notify = match parse_codex_notify(&text) {
         Ok(n) => n,
-        Err(e) if replace => return Err(e),
+        Err(e) if replace || chain => return Err(e),
         Err(_) => {
             let own = codex_notify_lines(&text)
                 .into_iter()
@@ -498,18 +509,47 @@ fn install_codex(replace: bool) -> Result<String> {
         }
     };
     let paused;
+    let chained;
     if let Some(n) = notify.as_ref().filter(|n| codex_notify_is_ours(&n.argv)) {
         // Legacy installations have no sidecar. Reinstalling must not replace
         // the original notifier saved by a previous --replace installation.
-        paused =
-            read_codex_previous(&f, &n.argv)?.is_some_and(|r| r["previous_notify"].is_string());
+        let mut record = read_codex_previous(&f, &n.argv)?;
+        if chain {
+            let record = record
+                .as_mut()
+                .context("no saved previous notify to chain")?;
+            enable_codex_chain(&f, record)?;
+            update_codex_previous(&f, record)?;
+        } else if replace {
+            if let Some(record) = record.as_mut().filter(|r| r.get("chain_argv").is_some()) {
+                record
+                    .as_object_mut()
+                    .expect("validated record")
+                    .remove("chain_argv");
+                record
+                    .as_object_mut()
+                    .expect("validated record")
+                    .remove("chain_config");
+                update_codex_previous(&f, record)?;
+            }
+        }
+        chained = record.as_ref().is_some_and(|r| r["chain_argv"].is_array());
+        paused = !chained && record.is_some_and(|r| r["previous_notify"].is_string());
     } else {
-        if notify.is_some() && !replace {
+        if notify.is_some() && !replace && !chain {
             bail!("{} already has its own `notify` setting; run again with --replace to save and replace it (restored on uninstall)", f.display());
         }
         let previous = notify.as_ref().map(|n| text[n.span.clone()].to_string());
-        paused = previous.is_some();
+        chained = chain;
+        paused = previous.is_some() && !chain;
         let argv = vec![exe(), "hook".into(), "codex".into(), "notify".into()];
+        let mut record = json!({
+            "version": 1, "executable": argv[0], "installed_notify": argv,
+            "previous_notify": previous,
+        });
+        if chain {
+            enable_codex_chain(&f, &mut record)?;
+        }
         let value = format!(
             "[{}]",
             argv.iter()
@@ -531,17 +571,14 @@ fn install_codex(replace: bool) -> Result<String> {
             }
         }
         // Check the edited document before creating a backup or changing config.
-        if replace {
+        if replace || chain {
             parse_codex_notify(&updated)?;
         }
         if let Some(dir) = f.parent() {
             std::fs::create_dir_all(dir)?;
         }
         backup(&f)?;
-        let record = serde_json::to_vec_pretty(&json!({
-            "version": 1, "executable": argv[0], "installed_notify": argv,
-            "previous_notify": previous,
-        }))?;
+        let record = serde_json::to_vec_pretty(&record)?;
         // Never clobber an earlier recovery record, including after a failed write.
         let pf = codex_previous_file(&f);
         let mut saved = std::fs::OpenOptions::new()
@@ -563,8 +600,107 @@ fn install_codex(replace: bool) -> Result<String> {
     Ok(format!(
         "installed codex integration in {}{skill}{}",
         f.display(),
-        if paused { CODEX_NOTIFY_PAUSED } else { "" }
+        if chained {
+            CODEX_NOTIFY_CHAINED
+        } else if paused {
+            CODEX_NOTIFY_PAUSED
+        } else {
+            ""
+        }
     ))
+}
+
+fn enable_codex_chain(f: &std::path::Path, record: &mut Value) -> Result<()> {
+    let raw = record["previous_notify"]
+        .as_str()
+        .context("no previous notify to chain")?;
+    let previous =
+        parse_codex_notify(&format!("notify = {raw}"))?.context("missing previous notify")?;
+    let argv = crate::notify_chain::resolve(&previous.argv)?;
+    let source = f
+        .canonicalize()
+        .context("resolve registered Codex config")?;
+    record["chain_argv"] = json!(argv);
+    record["chain_config"] = json!(source);
+    Ok(())
+}
+
+/// Mode changes replace the sidecar atomically, preserving its recovery value.
+fn update_codex_previous(f: &std::path::Path, record: &Value) -> Result<()> {
+    let target = codex_previous_file(f);
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let tmp = target.with_extension(format!("tmp-{}-{nonce}", std::process::id()));
+    let mut created = false;
+    let result = (|| -> Result<()> {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&tmp)?;
+        created = true;
+        file.write_all(&serde_json::to_vec_pretty(record)?)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&tmp, &target)?;
+        Ok(())
+    })();
+    if result.is_err() && created {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
+fn registered_codex_chain() -> Result<Option<Vec<String>>> {
+    let f = codex_config();
+    let text = match std::fs::read_to_string(&f) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.into()),
+    };
+    let Some(n) = parse_codex_notify(&text)?
+        .filter(|n| codex_notify_is_ours(&n.argv) && mentions_this_exe(&n.argv[0]))
+    else {
+        return Ok(None);
+    };
+    let Some(record) = read_codex_previous(&f, &n.argv)? else {
+        return Ok(None);
+    };
+    let Some(argv) = record.get("chain_argv") else {
+        return Ok(None);
+    };
+    if record["chain_config"] != json!(f.canonicalize()?) {
+        bail!("chain registration belongs to another config");
+    }
+    let argv: Vec<String> = argv
+        .as_array()
+        .and_then(|a| a.iter().map(|v| v.as_str().map(String::from)).collect())
+        .context("invalid chain argv")?;
+    let previous = parse_codex_notify(&format!(
+        "notify = {}",
+        record["previous_notify"]
+            .as_str()
+            .context("missing previous notify")?
+    ))?
+    .context("missing previous notify")?;
+    if argv.len() != previous.argv.len() || argv.get(1..) != previous.argv.get(1..) {
+        bail!("chain arguments do not match the saved notify");
+    }
+    if let Some(program) = previous
+        .argv
+        .first()
+        .filter(|p| std::path::Path::new(p).is_absolute())
+    {
+        if std::path::Path::new(program).canonicalize()? != std::path::Path::new(&argv[0]) {
+            bail!("chain executable does not match the saved notify");
+        }
+    }
+    crate::notify_chain::validate(&argv)?;
+    Ok(Some(argv))
 }
 
 fn uninstall_codex(f: &std::path::Path, text: &str, only_this_exe: bool) -> Result<String> {
@@ -753,6 +889,43 @@ pub fn uninstall_with(agent: &str, only_this_exe: bool) -> Result<String> {
 
 /// 에이전트가 부르는 훅. Claude Code: 표준 입력 JSON, 종료 코드 2 = 차단(사유는 stderr).
 pub async fn hook(agent: &str, event: &str, arg_payload: Option<String>) -> Result<i32> {
+    if agent != "codex" || event != "notify" {
+        return hook_report(agent, event, arg_payload).await;
+    }
+    let raw = match arg_payload {
+        Some(raw) => raw,
+        None => {
+            let mut raw = String::new();
+            std::io::stdin()
+                .take(4 * 1024 * 1024)
+                .read_to_string(&mut raw)?;
+            raw
+        }
+    };
+    // Codex 0.172.0 legacy_notify.rs calls spawn() and immediately returns;
+    // it does not wait for notify's exit. No worker/queue is necessary here.
+    // https://github.com/openai/codex/blob/rust-v0.172.0/codex-rs/hooks/src/legacy_notify.rs
+    let _ = tokio::time::timeout(
+        Duration::from_secs(1),
+        hook_report(agent, event, Some(raw.clone())),
+    )
+    .await;
+    if std::env::var_os(crate::notify_chain::ACTIVE_ENV).is_none() {
+        let result = async {
+            if let Some(argv) = registered_codex_chain()? {
+                crate::notify_chain::run(&argv, &raw).await?;
+            }
+            Ok::<(), anyhow::Error>(())
+        }
+        .await;
+        if let Err(e) = result {
+            eprintln!("KMttt previous notify skipped or failed: {e}");
+        }
+    }
+    Ok(0)
+}
+
+async fn hook_report(agent: &str, event: &str, arg_payload: Option<String>) -> Result<i32> {
     // KMttt pane 밖에서 돈 에이전트는 그냥 통과시킨다.
     let Ok(_pane) = std::env::var("KMTTT_PANE") else {
         return Ok(0);
@@ -912,7 +1085,7 @@ mod tests {
             assert!(install("codex").is_err());
             assert_eq!(std::fs::read_to_string(&f).unwrap(), original);
             assert!(!codex_previous_file(&f).exists());
-            run(IntegrationCmd::Install { agent: "codex".into(), replace: true }).unwrap();
+            run(IntegrationCmd::Install { agent: "codex".into(), replace: true, chain: false }).unwrap();
             assert!(installed("codex").unwrap());
             let saved = std::fs::read(codex_previous_file(&f)).unwrap();
             let msg = install_with("codex", true).unwrap();

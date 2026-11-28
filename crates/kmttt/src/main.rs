@@ -4,6 +4,7 @@ mod cli;
 mod cmd;
 mod integrations;
 mod machines_cmd;
+mod notify_chain;
 mod plugin_cmd;
 mod update;
 
