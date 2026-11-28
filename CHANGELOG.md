@@ -2,6 +2,7 @@
 
 ## 1.3.3 — 미출시 / Unreleased
 
+- Windows E2E 점검을 로컬에서 임시 세션·폴더로 분리하고 종료 시 정리합니다. 로컬 `default` 세션 지정은 `-Force` 없이는 거부합니다 / Local Windows E2E checks use temporary sessions and directories with cleanup; selecting `default` locally requires `-Force`
 - 이미 결정된 승인 ID를 다시 결정하면 오류로 거부해 세션 허용이 뒤늦게 추가되지 않도록 했습니다 / Repeated decisions for an already decided approval now return an error without creating a session grant
 - 세션 허용이 불가능한 승인 요청에 세션 허용을 보내면 실행을 허용하지 않고 대기 상태를 유지해, 한 번 허용이나 거부로 다시 결정할 수 있습니다 / Invalid session approval decisions leave the request pending without allowing execution, so it can be retried as a single allow or deny
 
