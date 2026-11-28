@@ -2,6 +2,7 @@
 
 ## 1.3.4 — 미출시 / Unreleased
 
+- 문서 전수 검수 반영: 메뉴 이름, 제거 시 Codex `notify` 복원 안내, Codex 연동 방법, 영어판 용어·문법과 빠진 내용, 한국어 조사를 바로잡고, SECURITY.md에 지원 버전과 한국어 요약을 넣었습니다 / Docs audit: fixed menu names, the uninstall note on restoring Codex `notify`, how to connect Codex, English terms, grammar and missing lines, and Korean particles; SECURITY.md now lists supported versions and has a Korean summary
 - 문서: GitHub에서 깨진 링크로 보이던 버튼·단축키 표기를 고치고, README 라이선스 절에 두 라이선스 파일 링크를 넣었습니다. CI가 공개 문서의 빈 절·깨진 링크·한영 제목 짝을 검사합니다 / Docs: fixed button and shortcut notes that GitHub rendered as broken links, linked both license files from the README, and CI now checks public docs for empty sections, broken links and Korean/English heading parity
 - KMttt X 버튼의 [창 닫기]를 [트레이로 숨기기]로 바꿔, 터미널 창을 닫는 [창 닫기]와 헷갈리지 않게 했습니다. 동작은 같습니다 / The KMttt window's "Close window" choice is now "Hide to tray", so it is not confused with closing a pane; behavior is unchanged
 - 승인 버튼 [허용]을 [이번만 허용]으로 바꾸고, 승인 상세 창에 [이 세션 동안 허용]이 무엇을 언제까지 허용하는지, 또는 왜 쓸 수 없는지 한 줄로 보여 줍니다 / The approval button now reads "Allow once", and the approval details say exactly what "Allow for this session" covers and until when, or why it is unavailable
