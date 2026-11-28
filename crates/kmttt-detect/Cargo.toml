@@ -7,7 +7,7 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow = "1.0.105"
-kmttt-proto = { version = "1.3.2", path = "../kmttt-proto" }
+kmttt-proto = { version = "1.3.3", path = "../kmttt-proto" }
 regex = "1.13.2"
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.2.3"
