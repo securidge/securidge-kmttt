@@ -3,7 +3,7 @@
 ## 1.3.4 — 미출시 / Unreleased
 
 - Codex notify 연결은 WSL·콘솔 호스트·원격 셸 실행 파일을 거부하고 실행 결과를 감사 로그에 남깁니다(서버가 없으면 생략). / Codex notify chaining rejects shell forwarding hosts and audits execution outcomes when a server is available.
-- Codex notify 연결의 감사 기록은 호출자별로 분당 `rate_per_min`건까지 남기고, 넘는 시작·완료 기록은 건수와 기간을 담은 요약 한 줄로 합칩니다. 실패·시간 초과는 항상 남깁니다. / Codex notify chain audit records are limited to `rate_per_min` per caller per minute; extra start/completion records are merged into one summary with counts and time range, while failures and timeouts are always recorded.
+- Codex notify 연결의 감사 기록은 호출자별로 분당 `rate_per_min`건까지 남기고, 넘는 시작·완료 기록은 건수와 기간을 담은 요약 한 줄로 합칩니다. 실패·시간 초과는 따로 분당 20건까지 개별로 남기고, 넘는 것도 요약에 건수로 셉니다. / Codex notify chain audit records are limited to `rate_per_min` per caller per minute; extra start/completion records are merged into one summary with counts and time range. Failures and timeouts are recorded individually up to a separate 20 per minute, and any beyond that are counted in the summary.
 
 ## 1.3.3 — 2026-11-28
 

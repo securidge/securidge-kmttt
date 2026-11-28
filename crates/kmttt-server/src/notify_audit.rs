@@ -9,12 +9,17 @@
 //!   with the counts and the first/last suppressed time is written when the
 //!   suppression window ends, before the caller's next accepted record, or when
 //!   the server stops.
-//! - `failed`/`timed_out` are never hidden: they are always recorded
-//!   individually; only their toast is skipped while over the limit.
+//! - `failed`/`timed_out` have their own, separate cap of [`FAILURE_LIMIT`]
+//!   per caller per window, so the first failures always stand out. Every
+//!   failure call consumes that cap, recorded or not, so a flood stays capped.
+//!   Over the cap they are not lost: the summary counts them (`failed N,
+//!   timed_out M`). The toast is skipped whenever either limit is exceeded.
 use kmttt_proto::Severity;
 use std::collections::{HashMap, VecDeque};
 
 pub const WINDOW_MS: i64 = 60_000;
+/// Individually recorded failures (failed + timed_out) per caller per window.
+pub const FAILURE_LIMIT: usize = 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
@@ -35,7 +40,7 @@ impl Phase {
         })
     }
 
-    fn always_recorded(self) -> bool {
+    fn is_failure(self) -> bool {
         matches!(self, Self::Failed | Self::TimedOut)
     }
 
@@ -80,6 +85,8 @@ pub struct Record {
 struct Pending {
     started: u64,
     completed: u64,
+    failed: u64,
+    timed_out: u64,
     first_ms: i64,
     last_ms: i64,
     caller: String,
@@ -88,21 +95,29 @@ struct Pending {
 
 impl Pending {
     fn total(&self) -> u64 {
-        self.started + self.completed
+        self.started + self.completed + self.failed + self.timed_out
     }
 
     fn summary(&self) -> Record {
+        // Counted failures keep their severity in the summary.
+        let severity = if self.failed + self.timed_out > 0 {
+            Severity::Notice
+        } else {
+            Severity::Info
+        };
         Record {
-            severity: Severity::Info,
+            severity,
             kind: "integration.notify_chain.suppressed",
             caller: self.caller.clone(),
             target: self.target.clone(),
             detail: format!(
                 "suppressed {} repeated notify chain audit records over the rate limit \
-                 (started {}, completed {}) from {} to {} (unix ms, {} ms)",
+                 (started {}, completed {}, failed {}, timed_out {}) from {} to {} (unix ms, {} ms)",
                 self.total(),
                 self.started,
                 self.completed,
+                self.failed,
+                self.timed_out,
                 self.first_ms,
                 self.last_ms,
                 self.last_ms - self.first_ms
@@ -115,7 +130,18 @@ impl Pending {
 #[derive(Default)]
 struct CallerState {
     hits: VecDeque<i64>,
+    failures: VecDeque<i64>,
     pending: Option<Pending>,
+}
+
+impl CallerState {
+    fn prune(&mut self, now: i64) {
+        for q in [&mut self.hits, &mut self.failures] {
+            while q.front().is_some_and(|t| now - *t >= WINDOW_MS) {
+                q.pop_front();
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -143,9 +169,7 @@ impl Gate {
         now: i64,
     ) -> Outcome {
         let st = self.callers.entry(key.to_string()).or_default();
-        while st.hits.front().is_some_and(|t| now - *t >= WINDOW_MS) {
-            st.hits.pop_front();
-        }
+        st.prune(now);
         let (severity, kind, detail) = phase.record();
         let event = |toast| Record {
             severity,
@@ -156,19 +180,23 @@ impl Gate {
             toast,
         };
         let mut records = Vec::new();
-        if (st.hits.len() as u64) < u64::from(limit.max(1)) {
-            st.hits.push_back(now);
+        let under_limit = (st.hits.len() as u64) < u64::from(limit.max(1));
+        let accept = if phase.is_failure() {
+            // Consumed by every failure call, so a flood keeps the cap full.
+            let room = st.failures.len() < FAILURE_LIMIT;
+            st.failures.push_back(now);
+            room
+        } else {
+            under_limit
+        };
+        if accept {
+            if under_limit {
+                st.hits.push_back(now);
+            }
             if let Some(p) = st.pending.take() {
                 records.push(p.summary());
             }
-            records.push(event(true));
-            return Outcome {
-                records,
-                recorded: true,
-            };
-        }
-        if phase.always_recorded() {
-            records.push(event(false));
+            records.push(event(under_limit));
             return Outcome {
                 records,
                 recorded: true,
@@ -182,7 +210,9 @@ impl Gate {
         });
         match phase {
             Phase::Started => p.started += 1,
-            _ => p.completed += 1,
+            Phase::Completed => p.completed += 1,
+            Phase::Failed => p.failed += 1,
+            Phase::TimedOut => p.timed_out += 1,
         }
         p.last_ms = now;
         Outcome {
@@ -205,12 +235,10 @@ impl Gate {
                     out.push(p.summary());
                 }
             }
-            while st.hits.front().is_some_and(|t| now - *t >= WINDOW_MS) {
-                st.hits.pop_front();
-            }
+            st.prune(now);
         }
         self.callers
-            .retain(|_, st| !st.hits.is_empty() || st.pending.is_some());
+            .retain(|_, st| !st.hits.is_empty() || !st.failures.is_empty() || st.pending.is_some());
         out.sort_by(|a, b| (&a.caller, &a.target).cmp(&(&b.caller, &b.target)));
         out
     }
@@ -261,13 +289,13 @@ mod tests {
         assert_eq!(
             f[0].detail,
             "suppressed 7 repeated notify chain audit records over the rate limit \
-             (started 3, completed 4) from 1003 to 1009 (unix ms, 6 ms)"
+             (started 3, completed 4, failed 0, timed_out 0) from 1003 to 1009 (unix ms, 6 ms)"
         );
         assert!(g.flush(1003 + 3 * WINDOW_MS, false).is_empty());
     }
 
     #[test]
-    fn failures_are_never_hidden_and_skip_only_the_toast() {
+    fn early_failures_are_recorded_even_over_the_normal_limit_without_toast() {
         let mut g = Gate::default();
         for i in 0..3 {
             rec(&mut g, "w1:p1", Phase::Completed, i);
@@ -279,7 +307,62 @@ mod tests {
             assert_eq!(o.records[0].severity, Severity::Notice);
             assert!(!o.records[0].toast);
         }
-        assert!(g.flush(10, true).is_empty(), "failures are not counted");
+        assert!(g.flush(10, true).is_empty(), "nothing was suppressed");
+    }
+
+    // QA T-019 regression: a pane agent sending only `failed` (or `timed_out`)
+    // must not get an unbounded number of individual ledger records.
+    #[test]
+    fn failure_flood_is_capped_and_counted_in_the_summary() {
+        for (phase, counts) in [
+            (Phase::Failed, "failed 980, timed_out 0"),
+            (Phase::TimedOut, "failed 0, timed_out 980"),
+        ] {
+            let mut g = Gate::default();
+            let mut written = 0;
+            for i in 0..1000 {
+                let o = rec(&mut g, "w1:p1", phase, i);
+                assert_eq!(o.recorded, (i as usize) < FAILURE_LIMIT);
+                written += o.records.len();
+            }
+            assert_eq!(written, FAILURE_LIMIT);
+            let f = g.flush(20 + WINDOW_MS, false);
+            assert_eq!(f.len(), 1);
+            assert_eq!(f[0].severity, Severity::Notice);
+            assert!(!f[0].toast);
+            assert_eq!(
+                f[0].detail,
+                format!(
+                    "suppressed 980 repeated notify chain audit records over the rate limit \
+                     (started 0, completed 0, {counts}) from 20 to 999 (unix ms, 979 ms)"
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn suppressed_failures_keep_consuming_the_failure_cap() {
+        let mut g = Gate::default();
+        // A steady flood (one call per second) never lets the cap refill.
+        let mut recorded = 0;
+        for i in 0..180 {
+            recorded += usize::from(rec(&mut g, "w1:p1", Phase::Failed, i * 1000).recorded);
+        }
+        assert_eq!(recorded, FAILURE_LIMIT);
+        let f = g.flush(180_000 + WINDOW_MS, true);
+        assert!(
+            f[0].detail.starts_with("suppressed 160 "),
+            "{}",
+            f[0].detail
+        );
+        // The failure cap is separate from the normal one.
+        assert!(rec(&mut g, "w1:p2", Phase::Failed, 0).recorded);
+        for i in 0..FAILURE_LIMIT as i64 {
+            rec(&mut g, "w1:p3", Phase::Failed, i);
+        }
+        assert!(!rec(&mut g, "w1:p3", Phase::Failed, 30).recorded);
+        // Recorded failures also used the normal limit (3) while it had room.
+        assert!(!rec(&mut g, "w1:p3", Phase::Started, 31).recorded);
     }
 
     #[test]

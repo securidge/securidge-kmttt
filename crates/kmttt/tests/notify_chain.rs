@@ -470,9 +470,8 @@ rate_per_min = 3
     for phase in ["failed", "timed_out"] {
         assert_eq!(call(phase).await["recorded"], true, "{phase}");
     }
-    // The summary is written when the 60-second window ends or the server
-    // stops; its counts and timing are covered by kmttt-server's notify_audit
-    // unit tests. Stopping is a user-only action, so it is not done here.
+    // The first failure is the caller's next accepted record, so the pending
+    // summary is written to the ledger just before it.
     let records = notify_chain_ledger(&f);
     let count = |kind: &str| {
         records
@@ -484,7 +483,24 @@ rate_per_min = 3
     assert_eq!(count("completed"), 1, "{records:?}");
     assert_eq!(count("failed"), 1, "{records:?}");
     assert_eq!(count("timed_out"), 1, "{records:?}");
-    assert_eq!(count("suppressed"), 0, "{records:?}");
+    assert_eq!(count("suppressed"), 1, "{records:?}");
+    let kinds: Vec<_> = records
+        .iter()
+        .map(|e| e["kind"].as_str().unwrap())
+        .collect();
+    let summary = kinds
+        .iter()
+        .position(|k| *k == "integration.notify_chain.suppressed")
+        .unwrap();
+    assert_eq!(kinds[summary + 1], "integration.notify_chain.failed");
+    let detail = records[summary]["detail"].as_str().unwrap();
+    assert!(
+        detail.starts_with(
+            "suppressed 4 repeated notify chain audit records over the rate limit \
+             (started 1, completed 3, failed 0, timed_out 0) from "
+        ),
+        "{detail}"
+    );
 }
 
 #[test]
