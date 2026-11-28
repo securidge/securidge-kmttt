@@ -101,6 +101,14 @@ kmttt machine add alice@build-box --label build-box   # 관제 센터에 표시
 
 모든 명령은 JSON을 출력합니다. 종료 코드는 `0` 성공, `1` 오류, `2` 대상 없음·잘못된 입력, `3` 정책 거부, `4` 시간 초과, `5` 기록 검증 실패입니다. `kmttt schema`는 소켓 API의 OpenRPC 문서를 출력합니다.
 
+## 에이전트 스킬 (Claude Code·Codex)
+
+KMttt 창 안에서 일하는 방법을 Claude Code와 Codex에게 알려 주는 에이전트 스킬을 제공합니다. 다른 에이전트에게 승인 한 번으로 메시지 보내기, 답을 기다리고 화면 읽기, 승인·거부·격리된 창의 외부 통신 차단을 우회하지 않고 처리하는 방법이 들어 있습니다.
+
+- **Claude Code**: `/plugin marketplace add securidge/securidge-kmttt` 실행 후 `/plugin install kmttt@securidge`
+- **Codex**: [`plugins/kmttt/skills/kmttt`](plugins/kmttt/skills/kmttt) 폴더를 `~/.agents/skills/kmttt`(또는 저장소의 `.agents/skills/kmttt`)에 복사
+- **SKILL.md를 읽는 그 밖의 도구**: `npx skills add securidge/securidge-kmttt`
+
 ## 파일 위치
 
 | | Linux / macOS | Windows |

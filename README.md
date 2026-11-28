@@ -101,6 +101,14 @@ kmttt machine add alice@build-box --label build-box   # show it in the Control C
 
 Every command prints JSON. Exit codes: `0` ok, `1` error, `2` not found or bad input, `3` denied by policy, `4` timeout, `5` ledger verification failed. `kmttt schema` prints the OpenRPC description of the socket API.
 
+## Agent skill (Claude Code and Codex)
+
+KMttt ships an agent skill that teaches Claude Code and Codex how to work inside KMttt panes: message another agent with a single approval, wait for and read its screen, and handle approvals, denials and sandbox network blocks without working around them.
+
+- **Claude Code**: `/plugin marketplace add securidge/securidge-kmttt`, then `/plugin install kmttt@securidge`
+- **Codex**: copy [`plugins/kmttt/skills/kmttt`](plugins/kmttt/skills/kmttt) to `~/.agents/skills/kmttt` (or a repository's `.agents/skills/kmttt`)
+- **Other tools that read `SKILL.md`**: `npx skills add securidge/securidge-kmttt`
+
 ## Files
 
 | | Linux / macOS | Windows |

@@ -1,0 +1,19 @@
+{
+  "name": "securidge",
+  "owner": {
+    "name": "Kwangmo Kim",
+    "url": "https://github.com/kkmkkmzz"
+  },
+  "description": "Agent skills for Securidge KMttt",
+  "plugins": [
+    {
+      "name": "kmttt",
+      "source": "./plugins/kmttt",
+      "description": "Teaches Claude Code how to work inside Securidge KMttt panes: message other agents with one approval, wait and read their screens, handle approvals, denials and sandbox network blocks without working around them.",
+      "version": "1.3.0",
+      "author": { "name": "Kwangmo Kim" },
+      "homepage": "https://github.com/securidge/securidge-kmttt",
+      "license": "MIT OR Apache-2.0"
+    }
+  ]
+}
