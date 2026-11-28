@@ -495,7 +495,7 @@
       "div",
       null,
       h("p", { text: t("close.body") }),
-      h("ul", null, h("li", { text: t("close.hide.d") }), h("li", { text: n ? t("close.quit.d_agents", { n }) : t("close.quit.d") })),
+      h("ul", null, h("li", { text: t("close.hide.d") }), h("li", { text: n ? (IS_WIN ? t("close.quit.d_agents_win", { n }) : t("close.quit.d_agents", { n })) : (IS_WIN ? t("close.quit.d_win") : t("close.quit.d")) })),
       h("label", { class: "chk" }, remember, " " + t("close.remember")),
     );
     const r = await modal({
@@ -520,7 +520,7 @@
   // 트레이의 [프로그램 끝내기]: 실행 중인 에이전트가 있으면 한 번 확인한다.
   async function onQuitRequested() {
     const n = agentCount();
-    if (n && !(await confirmDlg(t("close.quit"), t("close.quit.d_agents", { n }), t("close.quit"), true))) return;
+    if (n && !(await confirmDlg(t("close.quit"), (IS_WIN ? t("close.quit.d_agents_win", { n }) : t("close.quit.d_agents", { n })), t("close.quit"), true))) return;
     quitApp();
   }
   listen("app-close-requested", () => onCloseRequested());
@@ -1116,9 +1116,11 @@
     if (!pid) return;
     if (await confirmDlg(t("act.close_pane"), (IS_WIN ? t("confirm.close_pane_win") : t("confirm.close_pane")), t("act.close_pane"), true)) await tryRpc("pane.close", { pane: pid });
   }
-  async function closeTab() {
-    const tb = focusedTab();
-    if (tb) await tryRpc("tab.close", { id: tb.id });
+  async function closeTab(tab) {
+    const tb = tab || focusedTab();
+    if (!tb) return;
+    if (await confirmDlg(t("act.close_tab"), (IS_WIN ? t("confirm.close_tab_win") : t("confirm.close_tab")), t("act.close_tab"), true))
+      await tryRpc("tab.close", { id: tb.id });
   }
   async function closeWorkspace(id) {
     const ws = id ? snap().workspaces.find((w) => w.id === id) : focusedWs();
@@ -1140,7 +1142,7 @@
     await tryRpc("workspace.focus", { id: n.id });
   }
   async function stopServer() {
-    if (await confirmDlg(t("act.stop_server"), t("confirm.stop_server"), t("act.stop_server"), true)) {
+    if (await confirmDlg(t("act.stop_server"), (IS_WIN ? t("confirm.stop_server_win") : t("confirm.stop_server")), t("act.stop_server"), true)) {
       S.everConnected = false; // 자동 재연결로 다시 띄우지 않는다
       await tryRpc("server.stop");
     }
@@ -1336,7 +1338,7 @@
                     title: t("act.close_tab"),
                     onclick: (ev) => {
                       ev.stopPropagation();
-                      tryRpc("tab.close", { id: tb.id });
+                      closeTab(tb);
                     },
                   },
                   "×",
