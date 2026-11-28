@@ -36,6 +36,58 @@ fn session_grant_key(
     }
 }
 
+/// Apply a decision while the state lock is held; notifications follow on success.
+fn decide_pending(
+    st: &mut crate::state::State,
+    id: u64,
+    allow: bool,
+    session: bool,
+) -> Result<(Approval, bool), RpcError> {
+    let a = st
+        .approvals
+        .iter_mut()
+        .find(|a| a.info.id == id)
+        .ok_or_else(|| RpcError::not_found(format!("no pending approval #{id}")))?;
+    // Reject invalid decisions before consuming the sender or changing grants.
+    // The person can then retry the same pending request as a single decision.
+    if allow && session && a.grant_key.is_none() {
+        return Err(RpcError::invalid_params(
+            "this request cannot be allowed for the session",
+        ));
+    }
+    if let Some(tx) = a.tx.take() {
+        let _ = tx.send(allow);
+    }
+    let info = a.info.clone();
+    let key = a.grant_key.clone();
+    let grant = match key {
+        Some(k) if allow && session => {
+            let caller_pane = info.caller.split('(').next().unwrap_or("").to_string();
+            if !st.session_grants.iter().any(|g| g.key == k) {
+                st.session_grants.push(crate::state::SessionGrant {
+                    key: k.clone(),
+                    ts_ms: now_ms(),
+                    caller: info.caller.clone(),
+                    caller_pane,
+                    action: info.action.clone(),
+                    target: info.target.clone(),
+                });
+            }
+            // 같은 묶음으로 이미 기다리는 요청도 함께 허용한다.
+            for o in st.approvals.iter_mut() {
+                if o.grant_key.as_deref() == Some(k.as_str()) {
+                    if let Some(tx) = o.tx.take() {
+                        let _ = tx.send(true);
+                    }
+                }
+            }
+            true
+        }
+        _ => false,
+    };
+    Ok((info, grant))
+}
+
 impl Server {
     /// 소켓 상대 PID로 호출자를 정한다. PID를 모르면 가장 제한적인 쪽(알 수 없는 pane)으로 본다.
     pub fn identify(&self, pid: Option<u32>) -> Caller {
@@ -395,47 +447,7 @@ impl Server {
     ) -> Result<(), RpcError> {
         let (info, grant) = {
             let mut st = self.st.lock().map_err(|_| RpcError::internal("lock"))?;
-            let a = st
-                .approvals
-                .iter_mut()
-                .find(|a| a.info.id == id)
-                .ok_or_else(|| RpcError::not_found(format!("no pending approval #{id}")))?;
-            if let Some(tx) = a.tx.take() {
-                let _ = tx.send(allow);
-            }
-            let info = a.info.clone();
-            let key = a.grant_key.clone();
-            let grant = match key {
-                Some(k) if allow && session => {
-                    let caller_pane = info.caller.split('(').next().unwrap_or("").to_string();
-                    if !st.session_grants.iter().any(|g| g.key == k) {
-                        st.session_grants.push(crate::state::SessionGrant {
-                            key: k.clone(),
-                            ts_ms: now_ms(),
-                            caller: info.caller.clone(),
-                            caller_pane,
-                            action: info.action.clone(),
-                            target: info.target.clone(),
-                        });
-                    }
-                    // 같은 묶음으로 이미 기다리는 요청도 함께 허용한다.
-                    for o in st.approvals.iter_mut() {
-                        if o.grant_key.as_deref() == Some(k.as_str()) {
-                            if let Some(tx) = o.tx.take() {
-                                let _ = tx.send(true);
-                            }
-                        }
-                    }
-                    true
-                }
-                _ if session && allow => {
-                    return Err(RpcError::invalid_params(
-                        "this request cannot be allowed for the session",
-                    ))
-                }
-                _ => false,
-            };
-            (info, grant)
+            decide_pending(&mut st, id, allow, session)?
         };
         self.emit(
             "approval.decided",
@@ -570,6 +582,77 @@ pub fn refresh_integrity(server: &Arc<Server>, emit_on_fail: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::{PendingApproval, State};
+    use tokio::sync::oneshot;
+
+    fn enqueue(st: &mut State, id: u64, key: Option<&str>) -> oneshot::Receiver<bool> {
+        let (tx, rx) = oneshot::channel();
+        st.approvals.push(PendingApproval {
+            info: Approval {
+                id,
+                ts_ms: now_ms(),
+                expires_ms: now_ms() + 60_000,
+                caller: "w2:p6(codex)".into(),
+                action: "agent.prompt".into(),
+                target: "w2:p1".into(),
+                detail: "test request".into(),
+                session_ok: key.is_some(),
+            },
+            tx: Some(tx),
+            grant_key: key.map(String::from),
+        });
+        rx
+    }
+
+    #[test]
+    fn invalid_session_decision_keeps_request_pending_for_retry() {
+        for retry_allow in [false, true] {
+            let mut st = State::new();
+            let mut rx = enqueue(&mut st, 1, None);
+            let error = decide_pending(&mut st, 1, true, true).unwrap_err();
+            assert_eq!(error.code, codes::INVALID_PARAMS);
+            assert_eq!(rx.try_recv(), Err(oneshot::error::TryRecvError::Empty));
+            assert!(st.approvals[0].tx.is_some());
+            assert_eq!(st.approvals.len(), 1);
+            assert!(st.session_grants.is_empty());
+            // A failed session allow can be retried as a single allow or deny.
+            let (_, grant) = decide_pending(&mut st, 1, retry_allow, !retry_allow).unwrap();
+            assert!(!grant);
+            assert_eq!(rx.try_recv(), Ok(retry_allow));
+            assert!(st.session_grants.is_empty());
+        }
+    }
+
+    #[test]
+    fn single_decision_does_not_resolve_other_requests_or_create_grants() {
+        for (allow, session) in [(true, false), (false, false), (false, true)] {
+            let mut st = State::new();
+            let mut rx = enqueue(&mut st, 1, Some("same-key"));
+            let mut peer = enqueue(&mut st, 2, Some("same-key"));
+            let (_, grant) = decide_pending(&mut st, 1, allow, session).unwrap();
+            assert!(!grant);
+            assert_eq!(rx.try_recv(), Ok(allow));
+            assert_eq!(peer.try_recv(), Err(oneshot::error::TryRecvError::Empty));
+            assert!(st.session_grants.is_empty());
+        }
+    }
+
+    #[test]
+    fn session_decision_resolves_matching_requests_only() {
+        let mut st = State::new();
+        let mut first = enqueue(&mut st, 1, Some("same-key"));
+        let mut peer = enqueue(&mut st, 2, Some("same-key"));
+        let mut other = enqueue(&mut st, 3, Some("other-key"));
+        let mut unknown = enqueue(&mut st, 4, None);
+        let (_, grant) = decide_pending(&mut st, 1, true, true).unwrap();
+        assert!(grant);
+        assert_eq!(first.try_recv(), Ok(true));
+        assert_eq!(peer.try_recv(), Ok(true));
+        assert_eq!(other.try_recv(), Err(oneshot::error::TryRecvError::Empty));
+        assert_eq!(unknown.try_recv(), Err(oneshot::error::TryRecvError::Empty));
+        assert_eq!(st.session_grants.len(), 1);
+        assert_eq!(st.session_grants[0].key, "same-key");
+    }
 
     fn pane(id: &str) -> Caller {
         Caller::Pane {

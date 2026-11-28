@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.3 — 미출시 / Unreleased
+
+- 세션 허용이 불가능한 승인 요청에 세션 허용을 보내면 실행을 허용하지 않고 대기 상태를 유지해, 한 번 허용이나 거부로 다시 결정할 수 있습니다 / Invalid session approval decisions leave the request pending without allowing execution, so it can be retried as a single allow or deny
+
 ## 1.3.2 — 2026-11-28
 
 - Windows 에이전트 점검 스크립트에서 `.exe`를 우선하고 npm의 `.cmd`로 대체하며, 가이드에 Codex 직접 실행 시 `.ps1` 차단 대처와 창 종료 시 GUI 앱 동반 종료를 안내합니다 / Windows agent checks prefer `.exe` then npm `.cmd`; the guides explain Codex `.ps1` policy errors and GUI apps closing with their terminal pane
