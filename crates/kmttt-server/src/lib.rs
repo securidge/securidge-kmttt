@@ -7,6 +7,7 @@
 mod authz;
 mod filters;
 mod listener;
+mod notify_audit;
 mod panes;
 mod persist;
 pub mod plugins;
@@ -222,6 +223,8 @@ pub struct Server {
     pub shutdown: tokio::sync::Notify,
     pub integrity: Mutex<IntegrityStatus>,
     pub plugins: RwLock<Vec<plugins::Plugin>>,
+    /// `hook.notify_chain` 감사 기록의 호출자별 반복 억제.
+    notify_audit: Mutex<notify_audit::Gate>,
     /// 종료 중이면 pane이 닫혀도 레이아웃을 저장하지 않는다(재시작 복원용 레이아웃 보존).
     pub stopping: std::sync::atomic::AtomicBool,
 }
@@ -348,12 +351,25 @@ impl Server {
         target: &str,
         detail: &str,
     ) {
+        self.security_event_with(severity, kind, caller, target, detail, true);
+    }
+
+    /// `toast`가 false면 기록·구독자 전달은 같고 화면 알림만 생략한다.
+    pub fn security_event_with(
+        self: &Arc<Self>,
+        severity: Severity,
+        kind: &str,
+        caller: &str,
+        target: &str,
+        detail: &str,
+        toast: bool,
+    ) {
         let detail = self.redact(detail);
         let ev = match self.st.lock() {
             Ok(mut st) => st.push_event(severity, kind, caller, target, &detail),
             Err(_) => return,
         };
-        if severity >= Severity::Notice {
+        if toast && severity >= Severity::Notice {
             self.toast(
                 &format!("{} {kind}: {detail}", severity.icon()),
                 severity.as_str(),
@@ -365,6 +381,46 @@ impl Server {
             caller,
             serde_json::to_value(&ev).unwrap_or_default(),
         );
+    }
+
+    /// `hook.notify_chain` 한 건을 억제 규칙에 통과시켜 기록한다. 개별 기록했으면 true.
+    pub(crate) fn notify_chain_audit(
+        self: &Arc<Self>,
+        key: &str,
+        caller: &str,
+        target: &str,
+        phase: notify_audit::Phase,
+    ) -> bool {
+        let limit = self
+            .policy
+            .lock()
+            .map(|p| p.cfg.defaults.rate_per_min)
+            .unwrap_or(120);
+        let Ok(out) = self
+            .notify_audit
+            .lock()
+            .map(|mut g| g.record(key, caller, target, phase, limit, now_ms()))
+        else {
+            return false;
+        };
+        self.write_notify_audit(out.records);
+        out.recorded
+    }
+
+    /// 억제 기간이 끝난 요약(또는 `all`이면 전부)을 기록한다.
+    pub(crate) fn flush_notify_audit(self: &Arc<Self>, all: bool) {
+        let out = self
+            .notify_audit
+            .lock()
+            .map(|mut g| g.flush(now_ms(), all))
+            .unwrap_or_default();
+        self.write_notify_audit(out);
+    }
+
+    fn write_notify_audit(self: &Arc<Self>, records: Vec<notify_audit::Record>) {
+        for r in records {
+            self.security_event_with(r.severity, r.kind, &r.caller, &r.target, &r.detail, r.toast);
+        }
     }
 
     pub fn lang(&self) -> String {
@@ -505,6 +561,7 @@ pub async fn run(opts: ServerOptions) -> Result<()> {
         shutdown: tokio::sync::Notify::new(),
         integrity: Mutex::new(IntegrityStatus::default()),
         plugins: RwLock::new(plugins::load_all(&paths::plugins_dir())),
+        notify_audit: Mutex::new(notify_audit::Gate::default()),
         stopping: std::sync::atomic::AtomicBool::new(false),
     });
 
@@ -579,6 +636,7 @@ pub async fn run(opts: ServerOptions) -> Result<()> {
     let result = listener::serve(server.clone()).await;
 
     // 정리: 레이아웃 저장, 모든 pane 종료, 마지막 체크포인트.
+    server.flush_notify_audit(true);
     persist::save(&server);
     server
         .stopping

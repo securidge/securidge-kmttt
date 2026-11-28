@@ -30,6 +30,9 @@ pub async fn run(server: Arc<Server>) {
             flush_output(&server);
         }
         expire_approvals(&server);
+        if tick.is_multiple_of(10) {
+            server.flush_notify_audit(false);
+        }
         // subreaper로 입양된 고아(pane에서 빠져나온 프로세스)의 좀비를 치운다.
         let reaped = kmttt_pty::reaper::reap_adopted();
         if reaped > 0 {
