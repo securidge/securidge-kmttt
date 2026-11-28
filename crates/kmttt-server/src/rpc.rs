@@ -830,8 +830,15 @@ pub async fn call(
             };
             // Allowed without the policy rate limit so Codex can always report,
             // but repeats are throttled per transport identity (notify_audit).
+            // Unattributed callers share one bucket (see notify_audit::UNKNOWN_KEY).
+            let key = match &conn.caller {
+                Caller::Pane { pane, .. } if pane == "unknown" => {
+                    crate::notify_audit::UNKNOWN_KEY.to_string()
+                }
+                c => c.key(),
+            };
             let recorded =
-                server.notify_chain_audit(&conn.caller.key(), &conn.caller.label(), target, phase);
+                server.notify_chain_audit(&key, &conn.caller.label(), target, conn.pid, phase);
             Ok(json!({"recorded": recorded, "suppressed": !recorded}))
         }
         "plugin.list" => {
