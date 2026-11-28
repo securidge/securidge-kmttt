@@ -119,7 +119,7 @@ Windows에서는 터미널 창을 닫거나, 창의 셸이 끝나거나, KMttt�
 
 `kmttt integration install codex`를 실행하면 Codex의 `notify`를 KMttt에 연결하고 KMttt 에이전트 스킬도 설치합니다. 다른 `notify` 설정이 이미 있으면 기본적으로 덮어쓰기를 거부합니다.
 
-기존 설정을 보관하고 교체하려면 `kmttt integration install codex --replace`를 실행하세요. KMttt 연동 중에는 기존 알림 실행이 중단됩니다. Codex 앱의 computer-use처럼 해당 알림에 의존하는 기능도 연동을 해제할 때까지 중단될 수 있습니다.
+기존 설정을 보관하고 교체하려면 `kmttt integration install codex --replace`를 실행하세요. 이때 `config.toml`은 올바른 TOML이어야 하니, 문법 오류가 있으면 먼저 고치세요. KMttt 연동 중에는 기존 알림 실행이 중단됩니다. Codex 앱의 computer-use처럼 해당 알림에 의존하는 기능도 연동을 해제할 때까지 중단될 수 있습니다.
 
 `kmttt integration uninstall codex`로 연동을 해제하면 보관한 알림을 복원합니다. 단, 설치된 KMttt `notify`를 직접 다른 값으로 바꿨다면 현재 설정과 보관한 알림은 그대로 둡니다.
 

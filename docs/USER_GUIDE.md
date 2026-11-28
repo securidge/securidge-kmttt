@@ -116,7 +116,7 @@ Right-click a pane → "Why is the agent in this state?" shows the evidence.
 
 Run `kmttt integration install codex` to connect Codex's `notify` to KMttt and install the KMttt agent skill. If another `notify` setting already exists, the command refuses to overwrite it by default.
 
-To save and replace that setting, run `kmttt integration install codex --replace`. The previous notifier is disabled while the KMttt integration is installed. Features that depend on it, such as computer use in the Codex app, may stop until you remove the integration.
+To save and replace that setting, run `kmttt integration install codex --replace`. `config.toml` must be valid TOML for this; fix any syntax errors first. The previous notifier is disabled while the KMttt integration is installed. Features that depend on it, such as computer use in the Codex app, may stop until you remove the integration.
 
 Run `kmttt integration uninstall codex` to remove the integration and restore the saved notifier. If you have replaced KMttt's installed `notify` yourself, removal leaves your current setting and the saved notifier unchanged.
 
