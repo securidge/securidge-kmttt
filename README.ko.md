@@ -112,7 +112,7 @@ KMttt 창 안에서 일하는 방법을 Claude Code와 Codex에게 알려 주는
 
 **기존 Codex 알림:** `kmttt integration install codex`는 다른 `notify` 설정이 이미 있으면 기본적으로 덮어쓰기를 거부합니다. 보관 후 교체하려면 `kmttt integration install codex --replace`를 실행하세요. KMttt 연동 중에는 기존 알림 실행이 중단되며, Codex 앱의 computer-use처럼 해당 알림에 의존하는 기능도 중단될 수 있습니다. `kmttt integration uninstall codex`로 연동을 해제하면 보관한 알림을 복원합니다. 단, 설치된 KMttt `notify`를 직접 다른 값으로 바꿨다면 현재 설정과 보관한 알림은 그대로 둡니다.
 
-기존 알림을 계속 호출하려면 `--replace` 대신 `kmttt integration install codex --chain`을 명시적으로 선택하세요. 먼저 KMttt 보고를 최대 1초 동안 시도한 뒤, 등록된 이전 알림을 별도로 최대 3초 동안 호출합니다. 설치 시 경로를 확인하고 등록한 native 실행 파일만 셸 해석 없이 실행하며, 셸과 스크립트·`.cmd`/`.bat` 파일을 알림 프로그램으로 직접 지정하면 거부합니다(Windows는 native `.exe` 필요). 두 모드 모두 올바른 TOML이 필요하고, 원래 설정을 보관해 해제 시 복원하며, 함께 지정할 수 없습니다.
+기존 알림을 계속 호출하려면 `--replace` 대신 `kmttt integration install codex --chain`을 명시적으로 선택하세요. 먼저 KMttt 보고를 최대 1초 동안 시도한 뒤, 등록된 이전 알림을 별도로 최대 3초 동안 호출합니다. 설치 시 경로를 확인하고 등록한 네이티브 실행 파일만 셸 해석 없이 실행하며, 셸과 스크립트·`.cmd`/`.bat` 파일을 알림 프로그램으로 직접 지정하면 거부합니다(Windows는 네이티브 `.exe` 필요). 두 모드 모두 올바른 TOML이 필요하고, 원래 설정을 보관해 해제 시 복원하며, 함께 지정할 수 없습니다.
 
 ## 파일 위치
 
