@@ -2083,6 +2083,12 @@
             h("dt", { text: t("ap.detail") }),
             h("dd", null, h("pre", { class: "mono", text: a.detail || "" })),
           ),
+          h("p", {
+            class: "muted",
+            text: a.session_ok
+              ? t("ap.session.scope", { who: describePane(a.caller), act: actionName(a.action), tgt: describePane(a.target) })
+              : t("ap.session.none"),
+          }),
           h(
             "div",
             { class: "row" },
