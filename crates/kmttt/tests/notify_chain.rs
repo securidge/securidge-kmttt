@@ -839,3 +839,151 @@ fn successful_notifier_can_launch_an_intentional_background_app() {
         windows_sys::Win32::Foundation::WAIT_TIMEOUT
     );
 }
+
+fn status(f: &Fixture, agent: &str) -> (String, Value) {
+    let out = f.ok(&["integration", "status", agent]);
+    let text = String::from_utf8(out.stdout).unwrap();
+    let v: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(v[0]["agent"], agent);
+    assert!(
+        v[0]["installed"].is_boolean(),
+        "existing field kept: {text}"
+    );
+    assert!(v[0]["file"].is_string(), "existing field kept: {text}");
+    assert!(v[0]["reason_text"].as_str().is_some_and(|t| !t.is_empty()));
+    (v[0]["reason"].as_str().unwrap().to_owned(), v[0].clone())
+}
+
+/// Reason fields are fixed text: no paths, notify arguments or file contents.
+fn assert_fixed(f: &Fixture, entry: &Value) {
+    let reason = format!("{} {}", entry["reason"], entry["reason_text"]);
+    for leak in [
+        f.root.path().to_str().unwrap(),
+        "notify & helper",
+        "probe",
+        "space argument",
+        "literal",
+        "keep",
+        "ConHost",
+    ] {
+        assert!(!reason.contains(leak), "{leak} leaked: {reason}");
+    }
+}
+
+fn reason(f: &Fixture, agent: &str) -> String {
+    let (code, entry) = status(f, agent);
+    assert_fixed(f, &entry);
+    code
+}
+
+#[test]
+fn integration_status_reports_fixed_codex_reasons() {
+    let f = Fixture::new();
+    assert_eq!(reason(&f, "codex"), "config_missing");
+    std::fs::write(&f.config, "notify = [\n").unwrap();
+    assert_eq!(reason(&f, "codex"), "config_invalid");
+    std::fs::write(&f.config, "notify = 'keep'\n").unwrap();
+    assert_eq!(reason(&f, "codex"), "config_invalid");
+    std::fs::write(&f.config, "model = 'keep'\n").unwrap();
+    assert_eq!(reason(&f, "codex"), "notify_missing");
+    f.configure(&f.argv());
+    assert_eq!(reason(&f, "codex"), "notify_other_program");
+    let other = f
+        .root
+        .path()
+        .join("other")
+        .join(if cfg!(windows) { "kmttt.exe" } else { "kmttt" });
+    std::fs::write(
+        &f.config,
+        format!(
+            "notify = {}\n",
+            serde_json::to_string(&[other.to_str().unwrap(), "hook", "codex", "notify"]).unwrap()
+        ),
+    )
+    .unwrap();
+    assert_eq!(reason(&f, "codex"), "notify_other_kmttt");
+
+    f.configure(&f.argv());
+    f.ok(&["integration", "install", "codex", "--replace"]);
+    assert_eq!(reason(&f, "codex"), "ok", "paused previous notify is fine");
+    f.ok(&["integration", "uninstall", "codex"]);
+    f.ok(&["integration", "install", "codex", "--chain"]);
+    assert_eq!(reason(&f, "codex"), "ok");
+
+    let saved = std::fs::read(f.sidecar()).unwrap();
+    let valid: Value = serde_json::from_slice(&saved).unwrap();
+    for broken in [
+        {
+            let mut r = valid.clone();
+            r["chain_argv"][1] = json!("changed");
+            r
+        },
+        {
+            let mut r = valid.clone();
+            r["chain_config"] = json!("another config");
+            r
+        },
+        {
+            let mut r = valid.clone();
+            r["chain_argv"][0] = json!(env!("CARGO_BIN_EXE_kmttt"));
+            r
+        },
+        {
+            let mut r = valid.clone();
+            r["installed_notify"] = json!(["changed"]);
+            r
+        },
+    ] {
+        std::fs::write(f.sidecar(), broken.to_string()).unwrap();
+        assert_eq!(reason(&f, "codex"), "chain_registration_mismatch");
+    }
+
+    // Same judgment as the hook: a registered shell forwarder is refused.
+    let proxy = f.root.path().join("ConHost.exe");
+    std::fs::copy(&f.probe, &proxy).unwrap();
+    let path = proxy.canonicalize().unwrap().to_str().unwrap().to_owned();
+    let mut record = valid.clone();
+    let mut previous: Vec<String> =
+        serde_json::from_str(record["previous_notify"].as_str().unwrap()).unwrap();
+    previous[0] = path.clone();
+    record["previous_notify"] = json!(serde_json::to_string(&previous).unwrap());
+    record["chain_argv"][0] = json!(path);
+    std::fs::write(f.sidecar(), record.to_string()).unwrap();
+    assert_eq!(reason(&f, "codex"), "chain_rejected");
+
+    std::fs::write(f.sidecar(), &saved).unwrap();
+    assert_eq!(reason(&f, "codex"), "ok");
+    std::fs::remove_file(&f.probe).unwrap();
+    assert_eq!(reason(&f, "codex"), "chain_target_missing");
+}
+
+#[test]
+fn integration_status_reports_fixed_claude_reasons() {
+    let f = Fixture::new();
+    let settings = f.root.path().join("settings.json");
+    for agent in ["claude", "claude-usage"] {
+        assert_eq!(reason(&f, agent), "config_missing");
+    }
+    std::fs::write(&settings, "{ keep").unwrap();
+    for agent in ["claude", "claude-usage"] {
+        assert_eq!(reason(&f, agent), "config_invalid");
+    }
+    std::fs::write(&settings, "[]").unwrap();
+    assert_eq!(reason(&f, "claude"), "config_invalid");
+    std::fs::write(&settings, "{}").unwrap();
+    assert_eq!(reason(&f, "claude"), "hooks_missing");
+    assert_eq!(reason(&f, "claude-usage"), "statusline_missing");
+
+    f.ok(&["integration", "install", "claude"]);
+    assert_eq!(reason(&f, "claude"), "ok");
+    let mut v: Value = serde_json::from_slice(&std::fs::read(&settings).unwrap()).unwrap();
+    v["hooks"].as_object_mut().unwrap().remove("Stop");
+    std::fs::write(&settings, v.to_string()).unwrap();
+    assert_eq!(reason(&f, "claude"), "hooks_partial");
+
+    v["statusLine"] = json!({"type": "command", "command": "keep-my-statusline"});
+    std::fs::write(&settings, v.to_string()).unwrap();
+    assert_eq!(reason(&f, "claude-usage"), "statusline_other");
+    f.ok(&["integration", "install", "claude-usage", "--replace"]);
+    assert_eq!(reason(&f, "claude-usage"), "ok");
+}
