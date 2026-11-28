@@ -125,6 +125,7 @@ The card shows who asked (which pane in which workspace), what it wants to do (f
 When agents talk to each other, the same request keeps coming back. Press [Allow for this session] (Alt+Shift+Y) and **the same agent asking the same pane for the same action** is no longer asked about.
 
 - A different direction, target or action asks again.
+- Unidentified callers (`unknown`) are excluded from "Allow for this session".
 - Dangerous tool calls blocked by hooks cannot be allowed this way.
 - It ends automatically when a related pane closes or the program (server) quits.
 - Active session approvals are listed at the top of the Approvals tab; [Revoke] or [Revoke all] undoes them any time.
