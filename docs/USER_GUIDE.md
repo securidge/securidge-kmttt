@@ -239,11 +239,11 @@ At the top of the audit log you can filter by severity (info, warning, critical)
 
 On Windows, use `wsl` or `container` to really contain an agent (they need WSL or Docker/Podman).
 
-### Closing the window and the tray
+### Closing KMttt and the tray
 
-The window's X button asks whether to [Close window] or [Quit].
+The X button on the KMttt window asks whether to [Hide to tray] or [Quit]. This is different from [Close pane], which closes one terminal pane.
 
-- **Close window** hides the window. Agents keep running; click the KMttt icon in the notification area (tray) to bring it back.
+- **Hide to tray** hides the KMttt window. Agents keep running; click the KMttt icon in the notification area (tray) to bring it back.
 - **Quit** stops the KMttt server too, which ends every running agent.
 - Right-click the tray icon for [Open KMttt] and [Quit].
 - Check [Remember my choice] or set it in Settings → General → Close button (X) to stop the question.
