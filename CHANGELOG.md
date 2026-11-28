@@ -2,6 +2,7 @@
 
 ## 1.3.4 — 미출시 / Unreleased
 
+- 문서: GitHub에서 깨진 링크로 보이던 버튼·단축키 표기를 고치고, README 라이선스 절에 두 라이선스 파일 링크를 넣었습니다. CI가 공개 문서의 빈 절·깨진 링크·한영 제목 짝을 검사합니다 / Docs: fixed button and shortcut notes that GitHub rendered as broken links, linked both license files from the README, and CI now checks public docs for empty sections, broken links and Korean/English heading parity
 - KMttt X 버튼의 [창 닫기]를 [트레이로 숨기기]로 바꿔, 터미널 창을 닫는 [창 닫기]와 헷갈리지 않게 했습니다. 동작은 같습니다 / The KMttt window's "Close window" choice is now "Hide to tray", so it is not confused with closing a pane; behavior is unchanged
 - 승인 버튼 [허용]을 [이번만 허용]으로 바꾸고, 승인 상세 창에 [이 세션 동안 허용]이 무엇을 언제까지 허용하는지, 또는 왜 쓸 수 없는지 한 줄로 보여 줍니다 / The approval button now reads "Allow once", and the approval details say exactly what "Allow for this session" covers and until when, or why it is unavailable
 - 탭을 닫을 때도 확인 창을 띄웁니다. Windows에서는 서버 종료와 프로그램 끝내기 확인 문구에도, 창에서 시작한 프로그램과 처음 연 앱이 함께 닫힌다고 안내합니다 / Closing a tab now asks for confirmation, and on Windows the stop-server and quit confirmations also say that programs started from panes, including apps first opened from them, close too
@@ -35,7 +36,7 @@
 - 터미널 멀티플렉서: 세션·워크스페이스·탭·창, 분리·재접속, 레이아웃 복원, git worktree, 플러그인, SSH 원격. 창은 제목 줄을 끌어 옮기고 경계선·단축키로 크기를 조절합니다 / Terminal multiplexer: sessions, workspaces, tabs and panes, detach and reattach, layout restore, git worktrees, plugins, SSH remotes; drag panes to move them and resize with dividers or shortcuts
 - 에이전트 상태 감지: Claude Code, Codex CLI, OpenCode, Cursor CLI, Copilot CLI, Gemini CLI, Aider / Agent state detection for these agents
 - 보안 통제: 정책 관문과 승인, 위변조 탐지 감사 로그, 민감정보 마스킹, 창별 격리 수준, 위험한 도구 호출을 차단하는 훅. 격리된 창에서도 에이전트 로그인·인증은 동작하고, 외부 통신 차단은 묶어서 기록합니다 / Security controls: policy gate and approvals, tamper-evident audit log, secret masking, per-pane isolation, hooks that block dangerous tool calls; agent sign-in works in isolated panes and egress blocks are grouped in the log
-- 승인: [이 세션 동안 허용](Alt+Shift+Y)으로 같은 에이전트·작업·대상 창의 반복 요청을 세션 동안 자동 허용, [승인] 탭에서 해제 / Allow for this session: repeat requests with the same agent, action and target pane are allowed until a pane closes or the server stops; revoke from the Approvals tab
+- 승인: [이 세션 동안 허용] (Alt+Shift+Y)으로 같은 에이전트·작업·대상 창의 반복 요청을 세션 동안 자동 허용, [승인] 탭에서 해제 / Allow for this session: repeat requests with the same agent, action and target pane are allowed until a pane closes or the server stops; revoke from the Approvals tab
 - 창 닫기와 트레이: X 버튼에서 [창 닫기](트레이에 남음)·[프로그램 끝내기](서버와 에이전트까지 종료) 선택, 트레이 메뉴 [KMttt 열기]·[프로그램 끝내기], 중복 실행 시 기존 창 표시 / Close button asks Close window (stays in the tray) or Quit (stops the server and agents); tray menu Open KMttt / Quit; a second launch shows the existing window
 - 에이전트 스킬: Claude Code·Codex에게 KMttt 창 안에서 일하는 법(승인 한 번으로 다른 에이전트와 대화, 승인·거부·외부 통신 차단 처리)을 알려 주는 스킬. KMttt에서 연동하면 자동 설치·제거, GitHub에서 `/plugin marketplace add securidge/securidge-kmttt`로도 설치 / An agent skill for Claude Code and Codex, installed and removed with the KMttt integration or from GitHub
 - 통합 관제: TUI 관제 모드, 로컬 웹 콘솔 / Control center in the TUI and a local web console

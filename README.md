@@ -178,6 +178,9 @@ See [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT OR Apache-2.0, at your option.
+Dual-licensed: you may use it under either of the following, at your option.
+
+- [MIT License](LICENSE-MIT)
+- [Apache License, Version 2.0](LICENSE-APACHE)
 
 Made by Kwangmo Kim (김광모) as a personal project.

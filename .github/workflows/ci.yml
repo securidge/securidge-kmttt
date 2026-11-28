@@ -92,6 +92,7 @@ jobs:
           node --check desktop/ui/app.js
           node --check desktop/ui/i18n.js
           node ci/check-desktop-strings.js desktop/ui
+          node ci/check-docs.js .
       - name: vendored xterm.js matches the recorded hash
         shell: bash
         run: |

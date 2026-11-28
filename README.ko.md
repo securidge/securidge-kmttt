@@ -178,6 +178,9 @@ Windows에서는 `Get-FileHash <파일>`로 나온 값을 `SHA256SUMS.txt`의 �
 
 ## 라이선스
 
-MIT 또는 Apache-2.0 중 선택.
+이중 라이선스입니다. 아래 두 라이선스 중 하나를 골라 따르면 됩니다.
+
+- [MIT 라이선스](LICENSE-MIT)
+- [Apache 라이선스 2.0](LICENSE-APACHE)
 
 개인 프로젝트 · 만든 사람 김광모(Kwangmo Kim)
