@@ -110,6 +110,8 @@ KMttt ships an agent skill that teaches Claude Code and Codex how to work inside
 - **Codex**: copy [`plugins/kmttt/skills/kmttt`](plugins/kmttt/skills/kmttt) to `~/.agents/skills/kmttt` (or a repository's `.agents/skills/kmttt`)
 - **Other tools that read `SKILL.md`**: `npx skills add securidge/securidge-kmttt`
 
+**Existing Codex notifications:** `kmttt integration install codex` refuses to overwrite another `notify` setting by default. To save and replace it, run `kmttt integration install codex --replace`. This disables the previous notifier while the KMttt integration is installed; features that depend on it (such as computer use in the Codex app) may stop until you remove the integration with `kmttt integration uninstall codex`. Removal restores the saved notifier if KMttt's installed `notify` is still present; if you have replaced it yourself, your current setting and the saved notifier are left unchanged.
+
 ## Files
 
 | | Linux / macOS | Windows |
