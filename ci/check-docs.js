@@ -23,12 +23,27 @@ const SELF = /^https:\/\/(?:github\.com\/securidge\/securidge-kmttt\/(?:blob|tre
 // 태그로 고정한 주소(릴리스 노트 그림 등): …/blob|tree/v1.2.3/경로, raw…/v1.2.3/경로
 const SELF_TAG = /^https:\/\/(?:github\.com\/securidge\/securidge-kmttt\/(?:blob|tree)|raw\.githubusercontent\.com\/securidge\/securidge-kmttt)\/(v\d+\.\d+\.\d+)\/([^?#]+)(?:#(.*))?/;
 
-// 태그 안의 파일 내용(없으면 null). 태그를 받아 오지 않은 체크아웃이면 지금 트리로 대신 본다.
+// 태그 안의 파일 내용(없으면 null).
+// 태그가 아직 없는 경우: 지금 만드는 버전(Cargo.toml의 version)의 태그이거나, 태그를 하나도 받아 오지
+// 않은 체크아웃이면 지금 트리로 대신 본다. 그 밖의 없는 태그(오타 등)는 TAG_MISSING.
 const UNREAD = Symbol("dir-or-binary");
+const TAG_MISSING = Symbol("tag-missing");
+const CURRENT_TAG = (() => {
+  const m = /^version\s*=\s*"([^"]+)"/m.exec(fs.readFileSync(path.join(root, "Cargo.toml"), "utf8"));
+  return m ? `v${m[1]}` : null;
+})();
+const HAS_TAGS = (() => {
+  try {
+    return execFileSync("git", ["-C", root, "tag", "--list", "v*"], { encoding: "utf8" }).trim() !== "";
+  } catch {
+    return false;
+  }
+})();
 function readAtTag(tag, p) {
   try {
     execFileSync("git", ["-C", root, "rev-parse", "--verify", "--quiet", `refs/tags/${tag}`], { stdio: "ignore" });
   } catch {
+    if (HAS_TAGS && tag !== CURRENT_TAG) return TAG_MISSING;
     const f = path.join(root, p);
     if (!fs.existsSync(f)) return null;
     return p.endsWith(".md") ? fs.readFileSync(f, "utf8") : UNREAD;
@@ -96,7 +111,8 @@ function checkAbsolute(rel, line, url) {
   if (tagged) {
     const [, tag, p, frag] = tagged;
     const text = readAtTag(tag, decodeURIComponent(p));
-    if (text === null) report(rel, line, `broken link ${url} (not in ${tag})`);
+    if (text === TAG_MISSING) report(rel, line, `tag not found: ${tag} in ${url}`);
+    else if (text === null) report(rel, line, `broken link ${url} (not in ${tag})`);
     else if (frag && typeof text === "string" && !parseText(text).anchors.has(decodeURIComponent(frag).toLowerCase()))
       report(rel, line, `broken anchor ${url} (not in ${tag})`);
     return true;
