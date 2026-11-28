@@ -19,36 +19,17 @@ pub struct Conn {
     pub pid: Option<u32>,
 }
 
-// Fixed vocabulary prevents clients from forging arbitrary audit prose/kinds
-// or attaching notification contents and command arguments to the ledger.
-fn notify_chain_event(p: &Value) -> Result<(Severity, &'static str, &'static str), RpcError> {
+// Only a fixed phase is accepted: clients cannot forge audit prose/kinds or
+// attach notification contents and command arguments to the ledger.
+fn notify_chain_event(p: &Value) -> Result<crate::notify_audit::Phase, RpcError> {
     let obj = p
         .as_object()
         .filter(|o| o.len() == 1)
         .ok_or_else(|| RpcError::invalid_params("expected only phase"))?;
-    match obj.get("phase").and_then(Value::as_str) {
-        Some("started") => Ok((
-            Severity::Info,
-            "integration.notify_chain.started",
-            "Codex previous notifier execution started",
-        )),
-        Some("completed") => Ok((
-            Severity::Info,
-            "integration.notify_chain.completed",
-            "Codex previous notifier completed successfully",
-        )),
-        Some("failed") => Ok((
-            Severity::Notice,
-            "integration.notify_chain.failed",
-            "Codex previous notifier execution failed",
-        )),
-        Some("timed_out") => Ok((
-            Severity::Notice,
-            "integration.notify_chain.timed_out",
-            "Codex previous notifier exceeded its execution deadline",
-        )),
-        _ => Err(RpcError::invalid_params("invalid notify chain phase")),
-    }
+    obj.get("phase")
+        .and_then(Value::as_str)
+        .and_then(crate::notify_audit::Phase::parse)
+        .ok_or_else(|| RpcError::invalid_params("invalid notify chain phase"))
 }
 
 fn s(p: &Value, k: &str) -> Option<String> {
@@ -840,15 +821,18 @@ pub async fn call(
         }
         "hook.event" => hook_event(server, conn, p).await,
         "hook.notify_chain" => {
-            let (severity, kind, detail) = notify_chain_event(p)?;
+            let phase = notify_chain_event(p)?;
             // Unlike hook.event this is observation only, including outside a
             // pane. Attribute it to the transport identity, never client input.
             let target = match &conn.caller {
                 Caller::Pane { pane, .. } => pane.as_str(),
                 _ => "codex",
             };
-            server.security_event(severity, kind, &conn.caller.label(), target, detail);
-            Ok(json!({"recorded": true}))
+            // Allowed without the policy rate limit so Codex can always report,
+            // but repeats are throttled per transport identity (notify_audit).
+            let recorded =
+                server.notify_chain_audit(&conn.caller.key(), &conn.caller.label(), target, phase);
+            Ok(json!({"recorded": recorded, "suppressed": !recorded}))
         }
         "plugin.list" => {
             let ps = server
@@ -1273,7 +1257,9 @@ mod cmd_shim_tests {
     fn notify_chain_audit_accepts_only_fixed_phases_without_client_attribution() {
         use super::*;
         for phase in ["started", "completed", "failed", "timed_out"] {
-            let (_, kind, _) = notify_chain_event(&json!({"phase":phase})).unwrap();
+            let (_, kind, _) = notify_chain_event(&json!({"phase":phase}))
+                .unwrap()
+                .record();
             assert_eq!(kind, format!("integration.notify_chain.{phase}"));
             for key in ["caller", "target", "kind", "detail", "argv", "payload"] {
                 let mut params = json!({"phase":phase});

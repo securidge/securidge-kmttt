@@ -398,6 +398,95 @@ async fn previous_notifier_outcomes_reach_server_audit_without_payload_or_argv()
     );
 }
 
+fn notify_chain_ledger(f: &Fixture) -> Vec<Value> {
+    let ledger = f.root.path().join("data").join("ledger").join(&f.session);
+    std::fs::read_dir(ledger)
+        .unwrap()
+        .flatten()
+        .filter(|e| {
+            e.file_name().to_string_lossy().starts_with("ledger-")
+                && e.path().extension().is_some_and(|e| e == "jsonl")
+        })
+        .flat_map(|e| {
+            std::fs::read_to_string(e.path())
+                .unwrap()
+                .lines()
+                .map(|s| serde_json::from_str::<Value>(s).unwrap())
+                .collect::<Vec<_>>()
+        })
+        .filter(|e| {
+            e["kind"] == "security.event"
+                && e["data"]["kind"]
+                    .as_str()
+                    .is_some_and(|s| s.starts_with("integration.notify_chain."))
+        })
+        .map(|e| e["data"].clone())
+        .collect()
+}
+
+#[tokio::test]
+async fn repeated_notify_chain_audits_are_throttled_but_failures_are_kept() {
+    use kmttt_core::client::RpcClient;
+    let f = Fixture::new();
+    let config_dir = f.root.path().join("config");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::write(
+        config_dir.join("policy.toml"),
+        "[defaults]
+rate_per_min = 3
+",
+    )
+    .unwrap();
+    let mut server = TestServer(f.command().args(["server", "run"]).spawn().unwrap());
+    let started = Instant::now();
+    let (client, _notes) = loop {
+        if let Ok(c) = RpcClient::connect_local(&f.session).await {
+            break c;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(8),
+            "test server not ready: {:?}",
+            server.0.try_wait()
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    };
+    let call = |phase: &'static str| {
+        let client = &client;
+        async move {
+            client
+                .call("hook.notify_chain", json!({ "phase": phase }))
+                .await
+                .unwrap()
+        }
+    };
+    for phase in ["started", "completed", "started"] {
+        assert_eq!(call(phase).await["recorded"], true, "{phase}");
+    }
+    for phase in ["completed", "started", "completed", "completed"] {
+        let r = call(phase).await;
+        assert_eq!(r["recorded"], false, "{phase}");
+        assert_eq!(r["suppressed"], true, "{phase}");
+    }
+    for phase in ["failed", "timed_out"] {
+        assert_eq!(call(phase).await["recorded"], true, "{phase}");
+    }
+    // The summary is written when the 60-second window ends or the server
+    // stops; its counts and timing are covered by kmttt-server's notify_audit
+    // unit tests. Stopping is a user-only action, so it is not done here.
+    let records = notify_chain_ledger(&f);
+    let count = |kind: &str| {
+        records
+            .iter()
+            .filter(|e| e["kind"] == format!("integration.notify_chain.{kind}"))
+            .count()
+    };
+    assert_eq!(count("started"), 2, "{records:?}");
+    assert_eq!(count("completed"), 1, "{records:?}");
+    assert_eq!(count("failed"), 1, "{records:?}");
+    assert_eq!(count("timed_out"), 1, "{records:?}");
+    assert_eq!(count("suppressed"), 0, "{records:?}");
+}
+
 #[test]
 fn absent_server_silently_skips_audit_and_does_not_start_a_server() {
     let f = Fixture::new();
