@@ -2,6 +2,8 @@
 //   - 빈 절: 제목 바로 다음이 같은 단계 이상의 제목이거나 파일 끝
 //   - 상대 링크: 파일이 없거나, #앵커가 대상 문서의 제목에 없음(GitHub 앵커 규칙)
 //   - 실수 링크: "[버튼](Alt+Y)", "[항목](아이콘)"처럼 괄호를 붙여 써서 링크가 된 것
+//   - HTML <img src>, <a href>, <source src>와 이 저장소를 가리키는 절대 주소
+//     (github.com/…/blob|tree/main/…, raw.githubusercontent.com/…/main/…)도 같은 기준으로 확인
 //   - 한·영 짝 문서: 제목 개수와 단계가 같은지
 // 사용: node ci/check-docs.js [저장소 루트]
 const fs = require("fs");
@@ -15,14 +17,17 @@ const DOCS = [
 ];
 const PAIRS = [["README.md", "README.ko.md"], ["docs/USER_GUIDE.md", "docs/USER_GUIDE.ko.md"]];
 
+// 이 저장소의 절대 주소 → 저장소 안 경로(와 앵커).
+const SELF = /^https:\/\/(?:github\.com\/securidge\/securidge-kmttt\/(?:blob|tree)\/main|raw\.githubusercontent\.com\/securidge\/securidge-kmttt\/main)\/([^?#]*)(?:#(.*))?$/;
+
 // GitHub 제목 앵커: 소문자, 글자·숫자·공백·하이픈·밑줄만 남기고 공백을 하이픈으로.
 const slug = (h) => h.trim().toLowerCase().replace(/[^\p{L}\p{N}\p{M} _-]/gu, "").replace(/ /g, "-");
 
 const cache = new Map();
 function parse(rel) {
+  rel = rel.replace(/\\/g, "/");
   if (cache.has(rel)) return cache.get(rel);
-  const file = path.join(root, rel);
-  const lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
+  const lines = fs.readFileSync(path.join(root, rel), "utf8").split(/\r?\n/);
   const heads = [];
   let fence = false;
   lines.forEach((l, i) => {
@@ -39,7 +44,7 @@ function parse(rel) {
     anchors.add(n ? `${s}-${n}` : s);
     seen.set(s, n + 1);
   }
-  const doc = { file, lines, heads, anchors };
+  const doc = { lines, heads, anchors };
   cache.set(rel, doc);
   return doc;
 }
@@ -47,9 +52,29 @@ function parse(rel) {
 const problems = [];
 const report = (rel, line, msg) => problems.push(`${rel}:${line + 1}: ${msg}`);
 
+// rel 문서 line에 있는 링크 url을 확인한다. fromRoot면 경로가 저장소 루트 기준.
+function checkTarget(rel, line, url, fromRoot) {
+  const [p, frag] = url.split("#");
+  const hasAnchor = (doc) => parse(doc).anchors.has(decodeURIComponent(frag).toLowerCase());
+  if (p) {
+    const target = path.normalize(fromRoot ? p : path.join(path.dirname(rel), p));
+    if (!fs.existsSync(path.join(root, target))) return report(rel, line, `broken link ${url}`);
+    if (frag && target.endsWith(".md") && !hasAnchor(target)) report(rel, line, `broken anchor ${url}`);
+  } else if (frag && !hasAnchor(rel)) {
+    report(rel, line, `broken anchor #${frag}`);
+  }
+}
+
+// 절대 주소면 이 저장소 주소인지 보고 확인한다. 처리했으면 true.
+function checkAbsolute(rel, line, url) {
+  const self = SELF.exec(url.replace(/[.,;:]+$/, ""));
+  if (self) checkTarget(rel, line, self[1] + (self[2] ? "#" + self[2] : ""), true);
+  return /^(https?:|mailto:|data:)/.test(url);
+}
+
 for (const rel of DOCS) {
   if (!fs.existsSync(path.join(root, rel))) { problems.push(`${rel}: missing`); continue; }
-  const { lines, heads, anchors } = parse(rel);
+  const { lines, heads } = parse(rel);
 
   heads.forEach((h, k) => {
     let j = h.line + 1;
@@ -63,23 +88,27 @@ for (const rel of DOCS) {
     if (/^\s*```/.test(l)) fence = !fence;
     if (fence) return;
     const text = l.replace(/`[^`]*`/g, ""); // 코드 조각 안은 보지 않는다
-    for (const m of text.matchAll(/\[[^\]]*\]\(([^()\s]*(?:\([^()\s]*\)[^()\s]*)*)\)/g)) {
+
+    // 마크다운 링크·이미지
+    const mdLink = /\[[^\]]*\]\(([^()\s]*(?:\([^()\s]*\)[^()\s]*)*)\)/g;
+    for (const m of text.matchAll(mdLink)) {
       const url = m[1];
-      if (/^(https?:|mailto:)/.test(url)) continue;
+      if (checkAbsolute(rel, i, url)) continue;
       if (!/^[#./A-Za-z0-9_-]/.test(url) || /^(Alt|Ctrl|Shift|Cmd)\b/.test(url)) {
         report(rel, i, `text in parentheses right after [..] turns into a link: ${m[0]}`);
         continue;
       }
-      const [p, frag] = url.split("#");
-      if (p) {
-        const target = path.normalize(path.join(path.dirname(rel), p));
-        if (!fs.existsSync(path.join(root, target))) { report(rel, i, `broken link ${url}`); continue; }
-        if (frag && target.endsWith(".md") && !parse(target.replace(/\\/g, "/")).anchors.has(decodeURIComponent(frag).toLowerCase()))
-          report(rel, i, `broken anchor ${url}`);
-      } else if (frag && !anchors.has(decodeURIComponent(frag).toLowerCase())) {
-        report(rel, i, `broken anchor #${frag}`);
-      }
+      checkTarget(rel, i, url, false);
     }
+
+    // HTML 태그
+    for (const m of text.matchAll(/<(?:img|a|source)\b[^>]*?\b(?:src|href)\s*=\s*"([^"]+)"/gi)) {
+      if (!checkAbsolute(rel, i, m[1])) checkTarget(rel, i, m[1], false);
+    }
+
+    // 링크 문법 밖에 그대로 적힌 이 저장소 주소
+    const bare = text.replace(mdLink, "").replace(/<[^>]*>/g, "");
+    for (const m of bare.matchAll(/https:\/\/[^\s<>()"'`]+/g)) checkAbsolute(rel, i, m[0]);
   });
 }
 
