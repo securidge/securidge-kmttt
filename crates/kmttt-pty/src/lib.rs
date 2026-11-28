@@ -3,6 +3,7 @@
 //! PTY는 portable-pty를 쓴다(Windows는 ConPTY, Unix는 openpty).
 //! 출력은 전용 스레드에서 읽어 tokio 채널로 넘기고, 프로세스 종료는 다른 스레드에서 기다린다.
 
+pub mod bounded;
 pub mod procs;
 pub mod reaper;
 
