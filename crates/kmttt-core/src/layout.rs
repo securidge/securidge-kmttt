@@ -82,6 +82,110 @@ pub fn remove(node: LayoutNode, pane: &str) -> Option<LayoutNode> {
     }
 }
 
+/// 두 pane의 자리를 바꾼다(크기 비율은 자리에 남는다). 둘 다 트리에 있으면 true.
+pub fn swap(node: &mut LayoutNode, x: &str, y: &str) -> bool {
+    if x == y || !contains(node, x) || !contains(node, y) {
+        return false;
+    }
+    fn walk(n: &mut LayoutNode, x: &str, y: &str) {
+        match n {
+            LayoutNode::Leaf { pane } => {
+                if pane == x {
+                    *pane = y.to_string();
+                } else if pane == y {
+                    *pane = x.to_string();
+                }
+            }
+            LayoutNode::Split { a, b, .. } => {
+                walk(a, x, y);
+                walk(b, x, y);
+            }
+        }
+    }
+    walk(node, x, y);
+    true
+}
+
+/// 창을 놓을 위치: 대상 창의 어느 쪽인가.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+impl Side {
+    pub fn parse(s: &str) -> Option<Side> {
+        Some(match s {
+            "left" => Side::Left,
+            "right" => Side::Right,
+            "up" => Side::Up,
+            "down" => Side::Down,
+            _ => return None,
+        })
+    }
+}
+
+/// `pane`을 지금 자리에서 빼서 `target`의 `side` 쪽에 반반으로 놓는다. 성공하면 true.
+/// 실패하면(같은 창, 없는 창, 창이 하나뿐) 트리를 그대로 둔다.
+pub fn move_to(node: &mut LayoutNode, pane: &str, target: &str, side: Side) -> bool {
+    if pane == target || !contains(node, pane) || !contains(node, target) {
+        return false;
+    }
+    let Some(mut rest) = remove(node.clone(), pane) else {
+        return false;
+    };
+    fn place(n: &mut LayoutNode, pane: &str, target: &str, side: Side) -> bool {
+        match n {
+            LayoutNode::Leaf { pane: p } if p == target => {
+                let old = Box::new(LayoutNode::Leaf { pane: p.clone() });
+                let new = Box::new(LayoutNode::Leaf {
+                    pane: pane.to_string(),
+                });
+                let (dir, a, b) = match side {
+                    Side::Left => (SplitDir::Right, new, old),
+                    Side::Right => (SplitDir::Right, old, new),
+                    Side::Up => (SplitDir::Down, new, old),
+                    Side::Down => (SplitDir::Down, old, new),
+                };
+                *n = LayoutNode::Split {
+                    dir,
+                    ratio: 0.5,
+                    a,
+                    b,
+                };
+                true
+            }
+            LayoutNode::Leaf { .. } => false,
+            LayoutNode::Split { a, b, .. } => {
+                place(a, pane, target, side) || place(b, pane, target, side)
+            }
+        }
+    }
+    if !place(&mut rest, pane, target, side) {
+        return false;
+    }
+    *node = rest;
+    true
+}
+
+/// 모든 창이 같은 몫을 갖도록 비율을 다시 맞춘다(같은 방향으로 이어진 창들이 고르게 나뉜다).
+pub fn equalize(node: &mut LayoutNode) {
+    fn count(n: &LayoutNode, dir: SplitDir) -> usize {
+        match n {
+            LayoutNode::Split { dir: d, a, b, .. } if *d == dir => count(a, dir) + count(b, dir),
+            _ => 1,
+        }
+    }
+    if let LayoutNode::Split { dir, ratio, a, b } = node {
+        let (ca, cb) = (count(a, *dir), count(b, *dir));
+        *ratio = ca as f32 / (ca + cb) as f32;
+        equalize(a);
+        equalize(b);
+    }
+}
+
 /// 영역 계산. 나뉜 두 쪽 사이에는 1칸 경계선을 둔다.
 pub fn compute(node: &LayoutNode, area: Rect) -> Vec<(String, Rect)> {
     let mut out = Vec::new();
@@ -303,6 +407,40 @@ pub fn neighbor(node: &LayoutNode, area: Rect, from: &str, dx: i32, dy: i32) -> 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn swap_move_equalize() {
+        let mut t = leaf("a");
+        split(&mut t, "a", "b", SplitDir::Right);
+        split(&mut t, "b", "c", SplitDir::Right);
+        assert_eq!(panes(&t), ["a", "b", "c"]);
+        assert!(swap(&mut t, "a", "c"));
+        assert_eq!(panes(&t), ["c", "b", "a"]);
+        assert!(!swap(&mut t, "a", "zz"));
+        // c를 a 위로 옮긴다
+        assert!(move_to(&mut t, "c", "a", Side::Up));
+        assert_eq!(panes(&t), ["b", "c", "a"]);
+        assert!(!move_to(&mut t, "a", "a", Side::Left));
+        let before = t.clone();
+        assert!(!move_to(&mut t, "a", "nope", Side::Left));
+        assert_eq!(t, before);
+        // 한 줄로 셋: 각 1/3
+        let mut r = leaf("a");
+        split(&mut r, "a", "b", SplitDir::Right);
+        split(&mut r, "b", "c", SplitDir::Right);
+        equalize(&mut r);
+        let areas = compute(
+            &r,
+            Rect {
+                x: 0,
+                y: 0,
+                w: 92,
+                h: 10,
+            },
+        );
+        let ws: Vec<u16> = areas.iter().map(|(_, a)| a.w).collect();
+        assert!(ws.iter().all(|w| (29..=31).contains(w)), "{ws:?}");
+    }
+
     use super::*;
 
     fn leaf(p: &str) -> LayoutNode {

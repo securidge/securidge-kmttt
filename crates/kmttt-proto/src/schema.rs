@@ -76,6 +76,21 @@ pub const METHODS: &[(&str, &str, &str)] = &[
         "Set the ratio of one split (mouse border drag); people only",
         "tab?, path (list of bool: false=first, true=second child), ratio",
     ),
+    (
+        "layout.swap",
+        "Swap the places of two panes in one tab; people only",
+        "a, b",
+    ),
+    (
+        "layout.move",
+        "Move a pane next to another pane in the same tab; people only",
+        "pane, target, side (left|right|up|down)",
+    ),
+    (
+        "layout.equalize",
+        "Give every pane in a tab the same share; people only",
+        "tab?",
+    ),
     ("pane.close", "Close a pane", "pane"),
     ("agent.list", "List detected agents", ""),
     (

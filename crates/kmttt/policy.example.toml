@@ -60,7 +60,11 @@ default_profile = "none"
 # Profile for panes in `kmttt worktree create` workspaces
 worktree_profile = "none"
 # Domains reachable through the egress proxy from sandboxed panes (suffix match)
-egress_allow = ["api.anthropic.com", "api.openai.com", "github.com", "githubusercontent.com", "registry.npmjs.org", "crates.io", "static.crates.io", "pypi.org", "files.pythonhosted.org"]
+egress_allow = ["github.com", "githubusercontent.com", "registry.npmjs.org", "crates.io", "static.crates.io", "pypi.org", "files.pythonhosted.org"]
+# Always allow the AI agents' sign-in, authentication and model addresses on top of egress_allow
+# (Claude Code: api.anthropic.com, claude.ai, claude.com, platform.claude.com, mcp-proxy.anthropic.com;
+#  Codex: auth.openai.com, api.openai.com, chatgpt.com). Set false to list them yourself.
+agent_services = true
 # restricted: allow outbound TCP only to the egress proxy (Linux 6.7+ Landlock, macOS sandbox-exec).
 # Tools that ignore HTTPS_PROXY then fail instead of connecting directly.
 egress_enforce = true

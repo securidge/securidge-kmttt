@@ -96,6 +96,14 @@ impl Server {
         )?;
         let (cols, rows) = (st.viewport.0.max(2), st.viewport.1.max(1));
         let mut env = wrapped.env.clone();
+        // 프록시 주소에 창 표식을 넣어, 막힌 접속이 어느 창에서 왔는지 보안 기록에 남긴다.
+        // (클라이언트가 Proxy-Authorization으로 보낸다. 프록시는 이 값을 화면 표시에만 쓴다.)
+        let tag = kmttt_sandbox::egress::pane_tag(id);
+        for (k, v) in env.iter_mut() {
+            if k.to_ascii_lowercase().ends_with("_proxy") && v.starts_with("http://127.0.0.1:") {
+                *v = v.replacen("http://", &format!("http://{tag}@"), 1);
+            }
+        }
         env.push(("KMTTT_PANE".into(), id.into()));
         env.push(("KMTTT_SESSION".into(), self.opts.session.clone()));
         let spec = SpawnSpec {

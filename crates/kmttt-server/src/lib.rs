@@ -25,6 +25,174 @@ use kmttt_redact::{RedactConfig, Redactor};
 use kmttt_sandbox::egress::EgressProxy;
 use serde_json::{json, Value};
 use state::State;
+
+/// 막힌 외부 접속을 보안 기록에 남기는 규칙. 에이전트는 막히면 몇 초 안에 수십 번 다시 시도하므로
+/// 하나하나 남기면 기록과 알림이 넘친다(실사용에서 몇 분에 73건).
+/// - 같은 창·같은 주소는 10분에 한 번만 남기고, 그 사이 다시 시도한 횟수는 10분 뒤 한 줄로 합친다.
+/// - 단순 차단은 '알림'(화면 알림 없음). 한 창이 10분 안에 서로 다른 주소 8곳 이상에 막히면
+///   한 번 '경고'로 올린다(주소를 훑는 행동일 수 있으므로).
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+pub mod egress_log {
+    use super::Severity;
+    use std::collections::HashMap;
+
+    pub const WINDOW_MS: i64 = 10 * 60 * 1000;
+    pub const BURST_HOSTS: usize = 8;
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Record {
+        pub severity: Severity,
+        pub kind: &'static str,
+        pub caller: String,
+        pub target: String,
+        pub detail: String,
+    }
+
+    #[derive(Default)]
+    pub struct Gate {
+        /// (창, 주소) → (마지막으로 남긴 시각, 그 뒤 더 막힌 횟수)
+        seen: HashMap<(String, String), (i64, u64)>,
+        /// 창 → 최근 막힌 (시각, 주소)
+        recent: HashMap<String, Vec<(i64, String)>>,
+        /// 창 → 마지막 '경고' 시각
+        burst_at: HashMap<String, i64>,
+    }
+
+    impl Gate {
+        pub fn denied(&mut self, caller: &str, target: &str, now: i64) -> Vec<Record> {
+            let mut out = Vec::new();
+            let key = (caller.to_string(), target.to_string());
+            match self.seen.get_mut(&key) {
+                Some((last, more)) if now - *last < WINDOW_MS => *more += 1,
+                _ => {
+                    self.seen.insert(key, (now, 0));
+                    out.push(Record {
+                        severity: Severity::Info,
+                        kind: "sandbox.egress_denied",
+                        caller: caller.into(),
+                        target: target.into(),
+                        detail: "outbound connection blocked by allow list".into(),
+                    });
+                }
+            }
+            let host = target
+                .rsplit_once(':')
+                .map(|(h, _)| h)
+                .unwrap_or(target)
+                .to_string();
+            let r = self.recent.entry(caller.to_string()).or_default();
+            r.retain(|(t, _)| now - *t < WINDOW_MS);
+            r.push((now, host));
+            let mut hosts: Vec<&String> = r.iter().map(|(_, h)| h).collect();
+            hosts.sort();
+            hosts.dedup();
+            let n = hosts.len();
+            let recent_burst = self
+                .burst_at
+                .get(caller)
+                .is_some_and(|t| now - *t < WINDOW_MS);
+            if n >= BURST_HOSTS && !recent_burst {
+                self.burst_at.insert(caller.to_string(), now);
+                out.push(Record {
+                    severity: Severity::Notice,
+                    kind: "sandbox.egress_burst",
+                    caller: caller.into(),
+                    target: format!("{n} hosts"),
+                    detail: format!("blocked connections to {n} different hosts within 10 minutes"),
+                });
+            }
+            out
+        }
+
+        /// 10분이 지난 항목의 '더 막힌 횟수'를 한 줄로 남기고, 오래된 항목을 지운다.
+        pub fn flush(&mut self, now: i64) -> Vec<Record> {
+            let mut out = Vec::new();
+            for ((caller, target), (last, more)) in self.seen.iter_mut() {
+                if now - *last >= WINDOW_MS && *more > 0 {
+                    out.push(Record {
+                        severity: Severity::Info,
+                        kind: "sandbox.egress_denied",
+                        caller: caller.clone(),
+                        target: target.clone(),
+                        detail: format!("blocked {more} more times in the last 10 minutes"),
+                    });
+                    *last = now;
+                    *more = 0;
+                }
+            }
+            self.seen
+                .retain(|_, (last, more)| now - *last < 3 * WINDOW_MS || *more > 0);
+            self.recent
+                .retain(|_, r| r.iter().any(|(t, _)| now - *t < WINDOW_MS));
+            self.burst_at.retain(|_, t| now - *t < WINDOW_MS);
+            out.sort_by(|a, b| (&a.caller, &a.target).cmp(&(&b.caller, &b.target)));
+            out
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn repeats_are_grouped() {
+            let mut g = Gate::default();
+            let mut logged = 0;
+            for i in 0..73 {
+                logged += g
+                    .denied("w1:p1", "mcp-proxy.anthropic.com:443", i * 1000)
+                    .len();
+            }
+            assert_eq!(logged, 1, "같은 주소 73번 → 기록 1줄");
+            assert!(
+                g.flush(5 * 60 * 1000).is_empty(),
+                "10분 전에는 합치지 않는다"
+            );
+            let f = g.flush(WINDOW_MS + 1000);
+            assert_eq!(f.len(), 1);
+            assert_eq!(f[0].detail, "blocked 72 more times in the last 10 minutes");
+            assert_eq!(f[0].severity, Severity::Info);
+            // 10분이 지나 다시 막히면 새로 한 줄
+            assert_eq!(
+                g.denied("w1:p1", "mcp-proxy.anthropic.com:443", 2 * WINDOW_MS + 2000)
+                    .len(),
+                1
+            );
+            // 다른 창은 따로 센다
+            assert_eq!(
+                g.denied("w1:p2", "mcp-proxy.anthropic.com:443", 2000).len(),
+                1
+            );
+        }
+
+        #[test]
+        fn many_hosts_escalate_once() {
+            let mut g = Gate::default();
+            let mut kinds = Vec::new();
+            for i in 0..20 {
+                for r in g.denied("w1:p1", &format!("h{i}.example:443"), i as i64 * 1000) {
+                    kinds.push((r.kind, r.severity));
+                }
+            }
+            let bursts: Vec<_> = kinds
+                .iter()
+                .filter(|k| k.0 == "sandbox.egress_burst")
+                .collect();
+            assert_eq!(bursts.len(), 1);
+            assert_eq!(bursts[0].1, Severity::Notice);
+            assert!(kinds
+                .iter()
+                .filter(|k| k.0 == "sandbox.egress_denied")
+                .all(|k| k.1 == Severity::Info));
+        }
+    }
+}
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Instant;
@@ -155,6 +323,23 @@ impl Server {
         }
     }
 
+    /// 프록시 주소의 창 표식으로 창 ID를 찾는다. 모르면 "sandbox".
+    pub fn pane_for_tag(&self, tag: Option<&str>) -> String {
+        let Some(tag) = tag else {
+            return "sandbox".into();
+        };
+        self.st
+            .lock()
+            .ok()
+            .and_then(|st| {
+                st.panes
+                    .keys()
+                    .find(|id| kmttt_sandbox::egress::pane_tag(id) == tag)
+                    .cloned()
+            })
+            .unwrap_or_else(|| "sandbox".into())
+    }
+
     pub fn security_event(
         self: &Arc<Self>,
         severity: Severity,
@@ -214,7 +399,7 @@ impl Server {
         }
         let (detector, manifest_errors) = Detector::with_user_dir(&paths::manifests_dir());
         if let Some(e) = self.egress.get() {
-            e.set_allow(policy.sandbox.egress_allow.clone());
+            e.set_allow(policy.sandbox.effective_egress_allow());
         }
         *self.cfg.write().map_err(|_| anyhow::anyhow!("lock"))? = cfg;
         *self.policy.lock().map_err(|_| anyhow::anyhow!("lock"))? = PolicyEngine::new(policy);
@@ -303,7 +488,7 @@ pub async fn run(opts: ServerOptions) -> Result<()> {
     )));
     chain.push(Box::new(filters::LedgerFilter::new(ledger.clone())));
 
-    let egress_allow = policy.sandbox.egress_allow.clone();
+    let egress_allow = policy.sandbox.effective_egress_allow();
     let server = Arc::new(Server {
         opts,
         started: Instant::now(),
@@ -334,15 +519,23 @@ pub async fn run(opts: ServerOptions) -> Result<()> {
     {
         let s = server.clone();
         tokio::spawn(async move {
-            while let Some(ev) = eg_rx.recv().await {
-                if !ev.allowed {
-                    s.security_event(
-                        Severity::Notice,
-                        "sandbox.egress_denied",
-                        "sandbox",
-                        &format!("{}:{}", ev.host, ev.port),
-                        "outbound connection blocked by allow list",
-                    );
+            let mut gate = egress_log::Gate::default();
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                let now = now_ms();
+                let out = tokio::select! {
+                    ev = eg_rx.recv() => {
+                        let Some(ev) = ev else { break };
+                        if ev.allowed {
+                            continue;
+                        }
+                        let caller = s.pane_for_tag(ev.tag.as_deref());
+                        gate.denied(&caller, &format!("{}:{}", ev.host, ev.port), now)
+                    }
+                    _ = tick.tick() => gate.flush(now),
+                };
+                for r in out {
+                    s.security_event(r.severity, r.kind, &r.caller, &r.target, &r.detail);
                 }
             }
         });

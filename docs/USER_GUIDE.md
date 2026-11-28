@@ -79,8 +79,10 @@ Press **[? Guide]** (F1) for getting started, how-tos, shortcuts, a glossary, an
 | Open a project | [+ New workspace] → [Browse…] → pick a protection level → [Create] | Ctrl+Shift+N |
 | Start an AI agent | [▶ Start an AI agent] → pick the agent → name → [Start] | Ctrl+Shift+A |
 | Split the screen | [Split left/right] / [Split top/bottom], or right-click a pane | Alt+Shift+= / Alt+Shift+- |
-| Resize panes | Drag the line between two panes | — |
-| Enlarge one pane | ⤢ in the pane info line; press again to restore | Ctrl+Shift+Z |
+| Resize panes | Drag the line between two panes (double-click to split evenly) | Ctrl+Alt+= / Ctrl+Alt+- |
+| Make all panes the same size | [Pane] menu or right-click a pane | Ctrl+Alt+0 |
+| Move a pane | Drag its title row onto another pane: the center swaps the two, an edge places it on that side, Esc cancels | Swap with the neighbor: Ctrl+Alt+Shift+arrow |
+| Enlarge one pane | ⤢ in the title row or double-click the title row; again to restore | Ctrl+Shift+Z |
 | Close a pane | ✕ in the pane info line → [Close pane] | Ctrl+Shift+W |
 | New tab | [+] in the tab line | Ctrl+Shift+T |
 | Copy and paste | Drag to select → Ctrl+Shift+C / Ctrl+Shift+V (also Ctrl+V on Windows), or right-click | |
@@ -178,6 +180,8 @@ Nothing to connect. KMttt reads the latest usage sample from Codex's session log
 ![Overview](images/desktop/overview.png)
 
 **Security log** lists denied requests, suspicious instructions (prompt-injection patterns) and other security events. [Check the log for tampering] verifies the log's hash chain and signatures.
+
+Protected panes cannot connect to addresses outside the allow list. Repeats from the same pane to the same address are grouped into one info line every 10 minutes. If a tool you use (a connector, plugin and so on) needs that address, click [Allow this address] on the line to add it to the allow list. A pane blocked on many different addresses in a short time gets one warning. Claude Code and Codex sign-in, authentication and model addresses are always allowed, so signing in works in protected panes (you can turn this off in Settings → Protection).
 
 At the top of the security log you can filter by severity (info, warning, critical), pane, time range and text; [Export] copies the visible rows to the clipboard as CSV.
 

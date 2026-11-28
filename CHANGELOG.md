@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1 — 2026-11-28
+
+수정 버전입니다. Fix release.
+
+- 보호 창에서도 Claude Code·Codex 로그인과 인증이 됩니다. 에이전트의 로그인·인증·모델 호출 주소를 허용 목록과 따로 항상 허용합니다(설정 → 보호에서 끌 수 있음). / Claude Code and Codex can sign in from protected panes: their sign-in, authentication and model addresses are always allowed, separately from the allow list (can be turned off in Settings → Protection).
+- 외부 접속 차단 경고가 너무 많이 뜨던 문제: 같은 창·같은 주소는 10분에 한 줄(알림)로 묶고, 여러 주소를 훑을 때만 경고합니다. 기록에 어느 창인지 나오고, [이 주소 허용] 버튼이 생겼습니다. / Far fewer egress warnings: repeats are grouped into one info line per 10 minutes, with a single warning when a pane probes many addresses; the log names the pane and offers [Allow this address].
+- 창 크기와 위치를 자유롭게: 제목 줄을 끌어 다른 창 위에 놓아 옮기기·자리 바꾸기, 잘 보이는 경계선(두 번 누르면 반반), 창 크게·작게, 모든 창 크기 같게, 옆 창과 자리 바꾸기 단축키. / Resize and move panes freely: drag a title row onto another pane to move or swap, a visible divider (double-click to split evenly), enlarge/shrink, equal sizes, and swap-with-neighbor shortcuts.
+
+자세한 내용은 [릴리스 노트](docs/releases/v1.2.1.md)를 보세요. See the [release notes](docs/releases/v1.2.1.md).
+
 ## 1.2.0 — 2026-11-28
 
 공개 버전입니다. Public release.

@@ -12,6 +12,8 @@ pub struct EgressEvent {
     pub host: String,
     pub port: u16,
     pub allowed: bool,
+    /// 어느 창에서 왔는지(프록시 주소에 넣어 준 창 표식). 화면 표시용이며 믿을 수 있는 값은 아니다.
+    pub tag: Option<String>,
 }
 
 #[derive(Clone)]
@@ -72,6 +74,97 @@ pub struct Request {
     pub version: String,
     /// 요청 줄의 바이트 길이(그 뒤는 그대로 upstream에 보낸다)
     pub head_len: usize,
+    /// `Proxy-Authorization: Basic …`의 사용자 이름(창 표식). 영문·숫자·`-`·`_`만, 64자까지.
+    pub tag: Option<String>,
+}
+
+/// 창마다 프록시 주소에 넣는 표식(`http://<표식>@127.0.0.1:<포트>`). 창 ID의 `:` 등은 `-`로 바꾼다.
+pub fn pane_tag(pane: &str) -> String {
+    pane.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .take(64)
+        .collect()
+}
+
+fn b64_decode(s: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::new();
+    let mut buf = 0u32;
+    let mut bits = 0;
+    for c in s.trim().bytes() {
+        let v = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' | b'-' => 62,
+            b'/' | b'_' => 63,
+            b'=' => break,
+            _ => return None,
+        } as u32;
+        buf = (buf << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buf >> bits) as u8);
+            buf &= (1 << bits) - 1;
+        }
+        if out.len() > 512 {
+            return None;
+        }
+    }
+    Some(out)
+}
+
+/// 요청 머리에서 `Proxy-Authorization: Basic` 사용자 이름을 꺼낸다.
+fn proxy_user(head: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(head);
+    let headers = text.split("\r\n\r\n").next().unwrap_or("");
+    for line in headers.lines().skip(1) {
+        let Some((k, v)) = line.split_once(':') else {
+            continue;
+        };
+        if !k.trim().eq_ignore_ascii_case("proxy-authorization") {
+            continue;
+        }
+        let v = v.trim();
+        let cred = v
+            .strip_prefix("Basic ")
+            .or_else(|| v.strip_prefix("basic "))?;
+        let raw = b64_decode(cred)?;
+        let user = String::from_utf8_lossy(&raw)
+            .split(':')
+            .next()
+            .unwrap_or("")
+            .to_string();
+        let tag = pane_tag(&user);
+        return (!tag.is_empty()).then_some(tag);
+    }
+    None
+}
+
+/// upstream에 보내기 전에 프록시에만 쓰는 머리(`Proxy-Authorization`, `Proxy-Connection`)를 뺀다.
+fn strip_proxy_headers(rest: &[u8]) -> Vec<u8> {
+    let end = rest
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|i| i + 4)
+        .unwrap_or(rest.len());
+    let (hdr, body) = rest.split_at(end);
+    let mut out = Vec::with_capacity(rest.len());
+    for line in hdr.split_inclusive(|&b| b == b'\n') {
+        let l = String::from_utf8_lossy(line).to_ascii_lowercase();
+        if l.starts_with("proxy-authorization:") || l.starts_with("proxy-connection:") {
+            continue;
+        }
+        out.extend_from_slice(line);
+    }
+    out.extend_from_slice(body);
+    out
 }
 
 /// 호스트 이름에 쓸 수 있는 글자만 받는다(영문·숫자·`.`·`-`·`_`, 대괄호 IPv6면 16진수와 `:`).
@@ -126,6 +219,7 @@ pub fn parse_request(head: &[u8]) -> Result<Request, &'static [u8]> {
         origin_form,
         version,
         head_len: line_end,
+        tag: proxy_user(head),
     })
 }
 
@@ -180,6 +274,7 @@ async fn handle(
         origin_form,
         version,
         head_len,
+        tag,
     } = req;
     let allowed = allow
         .read()
@@ -189,6 +284,7 @@ async fn handle(
         host: host.clone(),
         port,
         allowed,
+        tag,
     });
     if !allowed {
         let body = format!("kmttt: egress to {host} is not in the sandbox allow list (policy.toml [sandbox] egress_allow)\n");
@@ -207,11 +303,11 @@ async fn handle(
         }
         Some(path) => {
             // 요청 줄을 origin-form으로 바꿔 보낸다. 머리 뒤에 따라온 본문도 그대로 보낸다.
-            let rest = &head[head_len..];
+            let rest = strip_proxy_headers(&head[head_len..]);
             upstream
                 .write_all(format!("{method} {path} {version}").as_bytes())
                 .await?;
-            upstream.write_all(rest).await?;
+            upstream.write_all(&rest).await?;
         }
     }
     let _ = tokio::io::copy_bidirectional(&mut client, &mut upstream).await;
@@ -258,6 +354,24 @@ mod tests {
                 String::from_utf8_lossy(bad)
             );
         }
+    }
+
+    #[test]
+    fn pane_tag_from_proxy_authorization() {
+        // "w1-p3:" → base64 "dzEtcDM6"
+        let r = parse_request(b"CONNECT a.example:443 HTTP/1.1\r\nHost: a\r\nProxy-Authorization: Basic dzEtcDM6\r\n\r\n").unwrap();
+        assert_eq!(r.tag.as_deref(), Some("w1-p3"));
+        assert_eq!(pane_tag("w1:p3"), "w1-p3");
+        let r = parse_request(b"CONNECT a.example:443 HTTP/1.1\r\n\r\n").unwrap();
+        assert_eq!(r.tag, None);
+        // 이상한 글자는 바꾸고, 깨진 값은 무시
+        let r = parse_request(
+            b"CONNECT a.example:443 HTTP/1.1\r\nproxy-authorization: Basic !!!\r\n\r\n",
+        )
+        .unwrap();
+        assert_eq!(r.tag, None);
+        let stripped = strip_proxy_headers(b"\r\nHost: a\r\nProxy-Authorization: Basic dzEtcDM6\r\nProxy-Connection: keep-alive\r\nX: 1\r\n\r\nbody");
+        assert_eq!(stripped, b"\r\nHost: a\r\nX: 1\r\n\r\nbody");
     }
 
     #[test]

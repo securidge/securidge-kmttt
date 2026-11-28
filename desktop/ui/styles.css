@@ -135,7 +135,21 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
 .divider { position: absolute; z-index: 4; }
 .divider.right { cursor: col-resize; }
 .divider.down { cursor: row-resize; }
-.divider:hover { background: var(--accent-soft); }
+.divider { display: flex; align-items: center; justify-content: center; }
+.divider.right { margin-left: -4px; padding: 0 4px; }
+.divider.down { margin-top: -2px; padding: 2px 0; }
+.divider-line { background: var(--line); border-radius: 2px; transition: background .12s; }
+.divider.right .divider-line { width: 2px; height: 100%; }
+.divider.down .divider-line { height: 2px; width: 100%; }
+.divider:hover .divider-line, .dragging-col .divider.right .divider-line, .dragging-row .divider.down .divider-line { background: var(--accent); }
+.divider.right:hover .divider-line { width: 4px; }
+.divider.down:hover .divider-line { height: 4px; }
+.pane-head { cursor: grab; }
+.pane-head .mini { cursor: pointer; }
+.moving-pane, .moving-pane * { cursor: grabbing !important; user-select: none; }
+.move-zone { position: absolute; z-index: 6; display: none; align-items: center; justify-content: center; background: color-mix(in srgb, var(--accent) 22%, transparent); border: 2px solid var(--accent); border-radius: 6px; pointer-events: none; }
+.move-label { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; font-size: 12.5px; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .divider-line { transition: none; } }
 .dragging-col, .dragging-col * { cursor: col-resize !important; user-select: none; }
 .dragging-row, .dragging-row * { cursor: row-resize !important; user-select: none; }
 .panes-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; background: var(--panel); }

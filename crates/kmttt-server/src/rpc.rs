@@ -560,6 +560,61 @@ pub async fn call(
             server.after_layout_change();
             Ok(json!({"ok": true}))
         }
+        "layout.swap" | "layout.move" => {
+            let (x, y) = if method == "layout.swap" {
+                (need(p, "a")?, need(p, "b")?)
+            } else {
+                (need(p, "pane")?, need(p, "target")?)
+            };
+            {
+                let mut st = server.st.lock().map_err(|_| RpcError::internal("lock"))?;
+                let tab_of = |id: &str| st.panes.get(id).map(|x| x.tab.clone());
+                let (Some(tx), Some(ty)) = (tab_of(&x), tab_of(&y)) else {
+                    return Err(RpcError::not_found("no pane"));
+                };
+                if tx != ty {
+                    return Err(RpcError::invalid_params("panes are in different tabs"));
+                }
+                let t = st
+                    .tab_mut(&tx)
+                    .ok_or_else(|| RpcError::not_found("no tab"))?;
+                let ok = if method == "layout.swap" {
+                    kmttt_core::layout::swap(&mut t.layout, &x, &y)
+                } else {
+                    let side = kmttt_core::layout::Side::parse(&need(p, "side")?)
+                        .ok_or_else(|| RpcError::invalid_params("side: left|right|up|down"))?;
+                    kmttt_core::layout::move_to(&mut t.layout, &x, &y, side)
+                };
+                if !ok {
+                    return Err(RpcError::invalid_params("cannot move that pane there"));
+                }
+                t.zoomed = false;
+                t.focus = x.clone();
+                st.apply_layout();
+            }
+            server.after_layout_change();
+            Ok(json!({"ok": true}))
+        }
+        "layout.equalize" => {
+            {
+                let mut st = server.st.lock().map_err(|_| RpcError::internal("lock"))?;
+                let tab = match s(p, "tab") {
+                    Some(t) => t,
+                    None => st
+                        .focused_tab()
+                        .map(|t| t.id.clone())
+                        .ok_or_else(|| RpcError::not_found("no tab"))?,
+                };
+                let t = st
+                    .tab_mut(&tab)
+                    .ok_or_else(|| RpcError::not_found(format!("no tab {tab}")))?;
+                kmttt_core::layout::equalize(&mut t.layout);
+                t.zoomed = false;
+                st.apply_layout();
+            }
+            server.after_layout_change();
+            Ok(json!({"ok": true}))
+        }
         "pane.zoom" => {
             let pn = pane_id()?;
             {

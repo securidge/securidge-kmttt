@@ -205,6 +205,13 @@
     { id: "split_right", menu: "pane", keys: "Alt+Shift+=", run: () => split("right"), needConn: true, kw: "split vertical 나누기 세로" },
     { id: "split_down", menu: "pane", keys: "Alt+Shift+-", run: () => split("down"), needConn: true, kw: "split horizontal 나누기 가로" },
     { id: "zoom", menu: "pane", keys: "Ctrl+Shift+Z", run: () => zoom(), needConn: true },
+    { id: "grow_pane", menu: "pane", keys: "Ctrl+Alt+=", run: () => growPane(1), needConn: true, sep: true, kw: "resize bigger larger 크기 키우기 늘리기" },
+    { id: "shrink_pane", menu: "pane", keys: "Ctrl+Alt+-", run: () => growPane(-1), needConn: true, kw: "resize smaller 크기 줄이기" },
+    { id: "equalize", menu: "pane", keys: "Ctrl+Alt+0", run: () => tryRpc("layout.equalize", {}), needConn: true, kw: "resize even same size 크기 같게 고르게" },
+    { id: "swap_left", menu: "pane", keys: "Ctrl+Alt+Shift+ArrowLeft", run: () => swapWith(-1, 0), needConn: true, sep: true, kw: "move swap 이동 자리 바꾸기 위치" },
+    { id: "swap_right", menu: "pane", keys: "Ctrl+Alt+Shift+ArrowRight", run: () => swapWith(1, 0), needConn: true, kw: "move swap 이동 자리 바꾸기 위치" },
+    { id: "swap_up", menu: "pane", keys: "Ctrl+Alt+Shift+ArrowUp", run: () => swapWith(0, -1), needConn: true, kw: "move swap 이동 자리 바꾸기 위치" },
+    { id: "swap_down", menu: "pane", keys: "Ctrl+Alt+Shift+ArrowDown", run: () => swapWith(0, 1), needConn: true, kw: "move swap 이동 자리 바꾸기 위치" },
     { id: "copy", menu: "pane", keys: "Ctrl+Shift+C", run: () => copySel(), sep: true },
     { id: "paste", menu: "pane", keys: "Ctrl+Shift+V", run: () => paste() },
     { id: "close_pane", menu: "pane", keys: "Ctrl+Shift+W", run: () => closePane(), sep: true, needConn: true },
@@ -263,7 +270,8 @@
     parts.push(keyName(e));
     return parts.join("+");
   }
-  const keyLabel = (k) => (IS_MAC ? k.replace("Ctrl+", "⌘") : k);
+  const ARROWS = { ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓" };
+  const keyLabel = (k) => (IS_MAC ? k.replace("Ctrl+", "⌘") : k).replace(/Arrow(Left|Right|Up|Down)/, (m) => ARROWS[m]);
 
   document.addEventListener(
     "keydown",
@@ -549,6 +557,11 @@
       }
     });
     el.addEventListener("contextmenu", (ev) => paneMenu(ev, id));
+    badge.addEventListener("mousedown", (ev) => startMove(ev, id));
+    badge.addEventListener("dblclick", (ev) => {
+      if (ev.target.closest("button")) return;
+      zoom(id);
+    });
     e = { term, el, badge };
     terms.set(id, e);
     return e;
@@ -706,7 +719,11 @@
       renderBadge(e.badge, p, id);
     }
     for (const d of divs) {
-      const el = h("div", { class: "divider " + d.dir, title: t("task.resize.h") });
+      const el = h("div", { class: "divider " + d.dir, title: t("task.resize.h") }, h("span", { class: "divider-line" }));
+      el.addEventListener("dblclick", (ev) => {
+        ev.preventDefault();
+        rpc("layout.set_ratio", { tab: tab.id, path: d.path, ratio: 0.5 }).catch(() => {});
+      });
       Object.assign(el.style, { left: d.x * cw + "px", top: d.y * ch + "px", width: d.w * cw + "px", height: d.h * ch + "px" });
       el.addEventListener("mousedown", (ev) => {
         ev.preventDefault();
@@ -786,6 +803,7 @@
       badge.append(h("button", { class: "mini primary", type: "button", title: t("task.agent.h"), onclick: stop(() => dlgStartAgent(id)) }, "▶ " + t("act.start_agent")));
     }
     badge.append(h("span", { class: "grow" }));
+    badge.title = t("move.head.h");
     const mini = (sym, title, fn) => h("button", { class: "mini", type: "button", title, "aria-label": title, onclick: stop(fn) }, sym);
     badge.append(
       mini(icon(ICON.splitRight, 13), t("act.split_right.short"), () => split("right", id)),
@@ -840,6 +858,9 @@
       item(t("act.split_right"), () => split("right", id)),
       item(t("act.split_down"), () => split("down", id)),
       item(t("act.zoom"), () => zoom(id)),
+      item(t("act.grow_pane"), () => growPane(1, id)),
+      item(t("act.shrink_pane"), () => growPane(-1, id)),
+      item(t("act.equalize"), () => tryRpc("layout.equalize", {})),
       h("div", { class: "sep" }),
       item(t("act.start_agent"), () => dlgStartAgent(id)),
       item(t("act.explain_agent"), () => explainAgent(id), !(paneInfo(id) || {}).agent),
@@ -875,6 +896,148 @@
   async function split(dir, target) {
     await tryRpc("pane.split", { target: target || focusedPane(), direction: dir, focus: true });
   }
+  // ───────────── 창 크기·자리 바꾸기 ─────────────
+  // 지금 탭의 창 배치(서버와 같은 계산)와 각 창 자리.
+  function tabRects() {
+    const tab = focusedTab();
+    if (!tab) return null;
+    const out = [];
+    computeLayout(tab.layout, { x: 0, y: 0, w: S.vp.cols, h: S.vp.rows }, out, [], []);
+    return { tab, rects: new Map(out) };
+  }
+  // 트리에서 창까지 가는 길(false=앞쪽, true=뒤쪽)과 지나간 나눔들.
+  function pathTo(node, id, path, trail) {
+    if (!node) return false;
+    if (node.type === "leaf") return node.pane === id;
+    for (const side of [false, true]) {
+      const child = side ? node.b : node.a;
+      trail.push({ path: path.slice(), dir: node.dir, ratio: node.ratio, inB: side });
+      path.push(side);
+      if (pathTo(child, id, path, trail)) return true;
+      path.pop();
+      trail.pop();
+    }
+    return false;
+  }
+  // 창을 키우거나 줄인다: 가로·세로 각각 가장 가까운 경계선을 옮긴다.
+  async function growPane(sign, id) {
+    const tab = focusedTab();
+    id = id || focusedPane();
+    if (!tab || !id) return;
+    const trail = [];
+    if (!pathTo(tab.layout, id, [], trail)) return;
+    const done = new Set();
+    for (const s of trail.reverse()) {
+      if (done.has(s.dir)) continue;
+      done.add(s.dir);
+      const step = 0.08 * sign * (s.inB ? -1 : 1);
+      await tryRpc("layout.set_ratio", { tab: tab.id, path: s.path, ratio: clamp(s.ratio + step, 0.1, 0.9) });
+    }
+    if (!done.size) showToast(t("move.only_one"), "warn");
+  }
+  // 화면에서 그 방향으로 바로 옆에 있는 창(겹치는 길이가 가장 긴 것).
+  function neighborOf(id, dx, dy) {
+    const tr = tabRects();
+    if (!tr) return null;
+    const a = tr.rects.get(id);
+    if (!a) return null;
+    let best = null,
+      bestOv = 0;
+    for (const [pid, r] of tr.rects) {
+      if (pid === id) continue;
+      const touch = dx > 0 ? r.x === a.x + a.w + 1 : dx < 0 ? r.x + r.w + 1 === a.x : dy > 0 ? r.y === a.y + a.h + 1 : r.y + r.h + 1 === a.y;
+      if (!touch) continue;
+      const ov = dx ? Math.min(a.y + a.h, r.y + r.h) - Math.max(a.y, r.y) : Math.min(a.x + a.w, r.x + r.w) - Math.max(a.x, r.x);
+      if (ov > bestOv) {
+        bestOv = ov;
+        best = pid;
+      }
+    }
+    return best;
+  }
+  async function swapWith(dx, dy) {
+    const id = focusedPane();
+    const other = id && neighborOf(id, dx, dy);
+    if (!other) {
+      showToast(t("move.no_neighbor"), "warn");
+      return;
+    }
+    await tryRpc("layout.swap", { a: id, b: other });
+  }
+  // 제목 줄을 끌어 다른 창 위에 놓는다: 가장자리면 그쪽에 붙이고, 가운데면 자리를 바꾼다.
+  function dropZone(ev, el) {
+    const r = el.getBoundingClientRect();
+    const fx = (ev.clientX - r.left) / r.width,
+      fy = (ev.clientY - r.top) / r.height;
+    const edge = Math.min(fx, 1 - fx, fy, 1 - fy);
+    if (edge > 0.25) return "swap";
+    if (edge === fx) return "left";
+    if (edge === 1 - fx) return "right";
+    return edge === fy ? "up" : "down";
+  }
+  function startMove(ev, id) {
+    if (ev.button !== 0 || ev.target.closest("button") || !S.connected) return;
+    const tab = focusedTab();
+    if (!tab || tab.zoomed || snap().panes.filter((p) => p.tab === tab.id).length < 2) return;
+    const x0 = ev.clientX,
+      y0 = ev.clientY;
+    let moving = false,
+      target = null,
+      zone = null;
+    const box = $("#panes");
+    const ghost = h("div", { class: "move-zone", "aria-hidden": "true" }, h("span", { class: "move-label" }));
+    const finish = (ok) => {
+      document.removeEventListener("mousemove", onMove, true);
+      document.removeEventListener("mouseup", onUp, true);
+      document.removeEventListener("keydown", onKey, true);
+      document.body.classList.remove("moving-pane");
+      ghost.remove();
+      if (ok && target && zone) {
+        if (zone === "swap") tryRpc("layout.swap", { a: id, b: target });
+        else tryRpc("layout.move", { pane: id, target, side: zone });
+      }
+    };
+    const onMove = (e) => {
+      if (!moving) {
+        if (Math.abs(e.clientX - x0) + Math.abs(e.clientY - y0) < 6) return;
+        moving = true;
+        document.body.classList.add("moving-pane");
+        box.append(ghost);
+      }
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      const pel = under && under.closest(".pane[data-pane]");
+      const pid = pel && pel.getAttribute("data-pane");
+      if (!pel || pid === id) {
+        target = zone = null;
+        ghost.style.display = "none";
+        return;
+      }
+      target = pid;
+      zone = dropZone(e, pel);
+      const r = pel.getBoundingClientRect(),
+        b = box.getBoundingClientRect();
+      let [l, tp, w, hh] = [r.left - b.left, r.top - b.top, r.width, r.height];
+      if (zone === "left") w /= 2;
+      else if (zone === "right") (l += w / 2), (w /= 2);
+      else if (zone === "up") hh /= 2;
+      else if (zone === "down") (tp += hh / 2), (hh /= 2);
+      Object.assign(ghost.style, { display: "flex", left: l + "px", top: tp + "px", width: w + "px", height: hh + "px" });
+      const name = agentLabel(paneInfo(pid) || { id: pid });
+      ghost.firstChild.textContent = zone === "swap" ? t("move.swap", { name }) : t("move.side." + zone, { name });
+    };
+    const onUp = () => finish(moving);
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        finish(false);
+      }
+    };
+    document.addEventListener("mousemove", onMove, true);
+    document.addEventListener("mouseup", onUp, true);
+    document.addEventListener("keydown", onKey, true);
+  }
+
   async function zoom(id) {
     await tryRpc("pane.zoom", { pane: id || focusedPane() });
   }
@@ -1918,7 +2081,16 @@
       return;
     }
     const tb = h("tbody");
+    const allowed = new Set(((S.policy && S.policy.sandbox && S.policy.sandbox.egress_allow) || []).map((d) => String(d).replace(/^\*\./, "").toLowerCase()));
     for (const e of rows.slice(0, 500)) {
+      const who = paneInfo(e.caller);
+      const detail = h("td", { class: "mono", text: logDetail(e) });
+      if (e.kind === "sandbox.egress_denied") {
+        const host = String(e.target || "").replace(/:\d+$/, "").toLowerCase();
+        const done = [...allowed].some((d) => host === d || host.endsWith("." + d));
+        if (host && !done) detail.append(" ", h("button", { class: "mini", type: "button", title: t("log.allow_host.h", { host }), onclick: (ev) => allowHost(ev, host) }, t("log.allow_host")));
+        else if (done) detail.append(" ", h("span", { class: "muted", text: t("log.allowed_now") }));
+      }
       tb.append(
         h(
           "tr",
@@ -1926,9 +2098,9 @@
           h("td", { class: "mono", text: fmtTime(e.ts_ms) }),
           h("td", null, h("span", { class: "sevb sev-" + e.severity, text: I18N.en["sev." + e.severity] ? t("sev." + e.severity) : e.severity })),
           h("td", { text: e.kind }),
-          h("td", { text: e.caller }),
+          h("td", { text: who ? agentLabel(who) : e.caller === "sandbox" ? t("log.who_sandbox") : e.caller, title: e.caller }),
           h("td", { text: e.target }),
-          h("td", { class: "mono", text: e.detail }),
+          detail,
         ),
       );
     }
@@ -1940,6 +2112,41 @@
         tb,
       ),
     );
+  }
+
+  // 서버가 영어로 남기는 몇 가지 기록 내용을 화면 언어로 보여 준다(기록 자체는 그대로).
+  function logDetail(e) {
+    const d = String(e.detail || "");
+    if (e.kind === "sandbox.egress_denied") {
+      if (d === "outbound connection blocked by allow list") return t("log.d.egress");
+      const m = /^blocked (\d+) more times in the last 10 minutes$/.exec(d);
+      if (m) return t("log.d.egress_more", { n: m[1] });
+    }
+    if (e.kind === "sandbox.egress_burst") {
+      const m = /^blocked connections to (\d+) different hosts/.exec(d);
+      if (m) return t("log.d.egress_burst", { n: m[1] });
+    }
+    return d;
+  }
+  // 보호 창의 외부 접속 허용 목록에 주소를 더한다(보호를 약하게 하는 일이라 한 번 더 묻는다).
+  async function allowHost(ev, host) {
+    if (!ev.isTrusted) return;
+    const ok = await modal({
+      title: t("log.allow_host.t", { host }),
+      body: h("div", null, h("p", { text: t("log.allow_host.b", { host }) })),
+      buttons: [{ label: t("dlg.cancel"), value: false }, { label: t("log.allow_host"), value: true, primary: true }],
+    });
+    if (!ok) return;
+    const list = ((S.policy && S.policy.sandbox && S.policy.sandbox.egress_allow) || []).slice();
+    if (!list.includes(host)) list.push(host);
+    try {
+      const r = await invoke("settings_save", { file: "policy", changes: [{ path: ["sandbox", "egress_allow"], value: list }] });
+      showToast(r.reloaded ? t("log.allow_host.done", { host }) : t("set.saved_offline"), "ok");
+      await loadPolicy();
+      renderLog();
+    } catch (e) {
+      showError(errText(e));
+    }
   }
 
   // ───────────── 시작 안내(3단계) ─────────────
@@ -2606,6 +2813,10 @@
       chk(sb.egress_enforce, t("set.sb.egress_enforce"), (v) => {
         set("policy", ["sandbox", "egress_enforce"], v);
         if (!v && sb.egress_enforce) weaker.push(t("set.sb.egress_enforce"));
+      }),
+      chk(sb.agent_services !== false, t("set.sb.agent_services"), (v) => {
+        set("policy", ["sandbox", "agent_services"], v);
+        if (v && sb.agent_services === false) weaker.push(t("set.sb.agent_services"));
       }),
       field(t("set.sb.egress_allow"), egress),
       field(t("set.sb.allow_tcp_ports"), ports),

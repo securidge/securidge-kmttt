@@ -121,7 +121,10 @@ pub fn classify_action(action: &str) -> ActionClass {
         | "pane.redraw"
         | "workspace.rename"
         | "tab.rename"
-        | "layout.set_ratio" => ActionClass::Admin,
+        | "layout.set_ratio"
+        | "layout.swap"
+        | "layout.move"
+        | "layout.equalize" => ActionClass::Admin,
         _ => ActionClass::Meta,
     }
 }
@@ -196,6 +199,9 @@ pub struct SandboxPolicy {
     pub per_agent: BTreeMap<String, String>,
     /// 이그레스 프록시 허용 도메인(접미사 일치)
     pub egress_allow: Vec<String>,
+    /// AI 에이전트의 로그인·인증·모델 호출 주소([`AGENT_SERVICE_HOSTS`])를 `egress_allow`와 별개로
+    /// 항상 허용한다. 사용자가 허용 목록을 따로 저장해도 로그인이 막히지 않게 하려는 것.
+    pub agent_services: bool,
     pub container_image: String,
     pub container_network: String,
     pub wsl_distro: String,
@@ -214,9 +220,8 @@ impl Default for SandboxPolicy {
             default_profile: "none".into(),
             worktree_profile: "none".into(),
             per_agent: BTreeMap::new(),
+            // 에이전트 로그인·인증 주소는 AGENT_SERVICE_HOSTS(agent_services)가 따로 허용한다.
             egress_allow: vec![
-                "api.anthropic.com".into(),
-                "api.openai.com".into(),
                 "github.com".into(),
                 "githubusercontent.com".into(),
                 "registry.npmjs.org".into(),
@@ -232,7 +237,40 @@ impl Default for SandboxPolicy {
             process_limit: 512,
             egress_enforce: true,
             allow_tcp_ports: Vec::new(),
+            agent_services: true,
         }
+    }
+}
+
+/// AI 에이전트가 로그인·인증·모델 호출·자체 업데이트에 쓰는 주소(접미사 일치).
+/// 출처: Claude Code "Network access requirements"(code.claude.com/docs/en/network-config),
+/// OpenAI "Network recommendations for ChatGPT"(help.openai.com/articles/9247338).
+/// 원격 측정(Datadog 등)과 플러그인·문서 주소는 넣지 않는다. 필요하면 사용자가 허용한다.
+pub const AGENT_SERVICE_HOSTS: &[&str] = &[
+    // Claude Code: API, claude.ai 로그인, OAuth 토큰 교환·갱신, 커넥터(MCP) 중계, 업데이트
+    "api.anthropic.com",
+    "claude.ai",
+    "claude.com",
+    "platform.claude.com",
+    "mcp-proxy.anthropic.com",
+    // Codex: ChatGPT 로그인(auth.openai.com), API 키 사용, ChatGPT 계정의 모델 호출(chatgpt.com)
+    "auth.openai.com",
+    "api.openai.com",
+    "chatgpt.com",
+];
+
+impl SandboxPolicy {
+    /// 프록시에 실제로 적용할 허용 목록: 사용자 목록 + (켜져 있으면) 에이전트 서비스 주소.
+    pub fn effective_egress_allow(&self) -> Vec<String> {
+        let mut list = self.egress_allow.clone();
+        if self.agent_services {
+            for h in AGENT_SERVICE_HOSTS {
+                if !list.iter().any(|d| d.eq_ignore_ascii_case(h)) {
+                    list.push((*h).to_string());
+                }
+            }
+        }
+        list
     }
 }
 
@@ -498,6 +536,25 @@ fn opt_eq(cond: &Option<String>, val: &Option<String>) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn agent_sign_in_hosts_survive_a_saved_allow_list() {
+        let p: PolicyConfig =
+            toml::from_str("[sandbox]\negress_allow = [\"github.com\"]\n").unwrap();
+        let list = p.sandbox.effective_egress_allow();
+        for h in [
+            "github.com",
+            "platform.claude.com",
+            "claude.ai",
+            "auth.openai.com",
+            "chatgpt.com",
+        ] {
+            assert!(list.iter().any(|d| d == h), "{h} missing");
+        }
+        let off: PolicyConfig =
+            toml::from_str("[sandbox]\negress_allow = []\nagent_services = false\n").unwrap();
+        assert!(off.sandbox.effective_egress_allow().is_empty());
+    }
+
     use super::*;
 
     fn agent(pane: &str, kind: &str) -> Caller {
@@ -567,6 +624,14 @@ mod tests {
     #[test]
     fn only_people_resize_layout() {
         let mut e = PolicyEngine::new(PolicyConfig::default());
+        for m in ["layout.swap", "layout.move", "layout.equalize"] {
+            assert_eq!(
+                e.evaluate(&agent("w1:p1", "claude"), m, &Target::default())
+                    .decision,
+                Decision::Deny,
+                "{m}"
+            );
+        }
         assert_eq!(
             e.evaluate(
                 &agent("w1:p1", "claude"),
