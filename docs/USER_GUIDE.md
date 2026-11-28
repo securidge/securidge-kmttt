@@ -118,6 +118,10 @@ Run `kmttt integration install codex` to connect Codex's `notify` to KMttt and i
 
 To save and replace that setting, run `kmttt integration install codex --replace`. `config.toml` must be valid TOML for this; fix any syntax errors first. The previous notifier is disabled while the KMttt integration is installed. Features that depend on it, such as computer use in the Codex app, may stop until you remove the integration.
 
+To keep calling the previous notifier after KMttt reporting, explicitly opt in with `kmttt integration install codex --chain` instead. KMttt reporting is attempted first with a 1-second limit, followed by a separate 3-second limit for the previous notifier. `--chain` also requires valid TOML and an existing notifier (or one saved by an earlier `--replace` install). It cannot be combined with `--replace`; to disable chaining again, run `kmttt integration install codex --replace`.
+
+Chaining runs only the native executable whose path was resolved and registered during installation, without shell interpretation. Shells and scripts, including `.cmd`/`.bat` files, are rejected as the notifier program; Windows requires a native `.exe`. A notifier that exceeds its 3-second limit is terminated along with its descendants. A skipped or failed previous notifier is reported as `KMttt previous notify skipped or failed`.
+
 Run `kmttt integration uninstall codex` to remove the integration and restore the saved notifier. If you have replaced KMttt's installed `notify` yourself, removal leaves your current setting and the saved notifier unchanged.
 
 ## 6. Answering approval requests
