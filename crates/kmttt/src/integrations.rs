@@ -606,13 +606,86 @@ pub async fn hook(agent: &str, event: &str, arg_payload: Option<String>) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
+    use std::sync::{Mutex, MutexGuard};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    const ENV_KEYS: [&str; 3] = [
+        "KMTTT_CLAUDE_SETTINGS",
+        "KMTTT_CODEX_CONFIG",
+        "KMTTT_DATA_DIR",
+    ];
+
+    /// Hold the lock until every override is restored, including during unwinding.
+    /// Override both agents because sync_skills() checks both integrations.
+    struct TestEnv {
+        previous: [Option<OsString>; 3],
+        _lock: MutexGuard<'static, ()>,
+    }
+
+    impl TestEnv {
+        fn new(root: &std::path::Path) -> Self {
+            let lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let env = Self {
+                previous: ENV_KEYS.map(std::env::var_os),
+                _lock: lock,
+            };
+            for (key, path) in ENV_KEYS.into_iter().zip([
+                root.join("settings.json"),
+                root.join("config.toml"),
+                root.join("data"),
+            ]) {
+                std::env::set_var(key, path);
+            }
+            env
+        }
+    }
+
+    impl Drop for TestEnv {
+        fn drop(&mut self) {
+            for (key, value) in ENV_KEYS.into_iter().zip(&self.previous) {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_env_serializes_and_restores_after_success_and_panic() {
+        let d = tempfile::tempdir().unwrap();
+        for panic in [false, true] {
+            let env = TestEnv::new(d.path());
+            let previous = env.previous.clone();
+            assert!(matches!(
+                ENV_LOCK.try_lock(),
+                Err(std::sync::TryLockError::WouldBlock)
+            ));
+            assert_eq!(claude_settings(), d.path().join("settings.json"));
+            assert_eq!(codex_config(), d.path().join("config.toml"));
+            assert_eq!(kmttt_core::paths::data_dir(), d.path().join("data"));
+            let changed = d.path().join("changed.toml");
+            let result = std::panic::catch_unwind(move || {
+                let _env = env;
+                // Exercise restoration after both removal and replacement.
+                std::env::remove_var(ENV_KEYS[0]);
+                std::env::set_var(ENV_KEYS[1], changed);
+                std::env::remove_var(ENV_KEYS[2]);
+                assert!(!panic, "exercise environment restoration on unwind");
+            });
+            assert_eq!(result.is_err(), panic);
+            let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            assert_eq!(ENV_KEYS.map(std::env::var_os), previous);
+        }
+    }
 
     #[test]
     fn claude_install_uninstall_preserves_user_hooks() {
         let d = tempfile::tempdir().unwrap();
+        let _env = TestEnv::new(d.path());
         let f = d.path().join("settings.json");
         std::fs::write(&f, r#"{"model":"x","hooks":{"Stop":[{"hooks":[{"type":"command","command":"say done"}]}]}}"#).unwrap();
-        std::env::set_var("KMTTT_CLAUDE_SETTINGS", &f);
         install("claude").unwrap();
         install("claude").unwrap(); // 두 번 해도 중복되지 않는다
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
@@ -650,8 +723,6 @@ mod tests {
             .any(|e| e.file_name().to_string_lossy().contains("kmttt-backup")));
 
         // 사용량 상태 줄: 남의 상태 줄은 --replace 없이 바꾸지 않고, 지우면 되돌린다.
-        // (같은 환경 변수를 쓰므로 테스트를 나누지 않는다)
-        std::env::set_var("KMTTT_DATA_DIR", d.path().join("data"));
         let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         v["statusLine"] = json!({"type": "command", "command": "mine.sh"});
         std::fs::write(&f, v.to_string()).unwrap();
@@ -667,13 +738,12 @@ mod tests {
         uninstall_with("claude-usage", true).unwrap();
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         assert_eq!(v["statusLine"]["command"], "mine.sh");
-        std::env::remove_var("KMTTT_DATA_DIR");
-        std::env::remove_var("KMTTT_CLAUDE_SETTINGS");
     }
 
     #[test]
     fn codex_notify_inserted_before_tables() {
         let d = tempfile::tempdir().unwrap();
+        let _env = TestEnv::new(d.path());
         let f = d.path().join("config.toml");
         std::fs::write(&f, "model = \"o4\"\n\n[profiles.fast]\nmodel = \"mini\"\n").unwrap();
         std::env::set_var("KMTTT_CODEX_CONFIG", &f);
