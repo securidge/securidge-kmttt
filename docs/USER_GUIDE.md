@@ -104,7 +104,7 @@ On Windows, when a pane closes, its shell exits or you quit KMttt, all of that p
 | --- | --- | --- |
 | ● working | The agent is working | Wait |
 | ▲ waiting for input | It is waiting for an answer, approval or choice | Use [Go to pane] on the banner and answer |
-| ✓ done (unseen) | It finished in the background | Check the result |
+| ✓ done (unread) | It finished in the background | Check the result |
 | ○ idle | Ready, already seen | Give the next instruction |
 | ? unknown | The screen does not tell | Look at the pane |
 
