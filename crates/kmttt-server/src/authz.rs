@@ -7,6 +7,35 @@ use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// 식별하지 못한 호출자의 pane 이름. 서로 다른 프로세스가 모두 이 이름을 쓴다.
+const UNKNOWN_PANE: &str = "unknown";
+
+/// "이 세션 동안 허용" 묶음 키. 창 사이 동작(지시·입력·실행·읽기·생성)만 대상이다.
+///
+/// 식별하지 못한 호출자(`unknown`)는 묶지 않는다. 그 이름은 출처가 다른 여러 프로세스가
+/// 함께 쓰므로, 한 번 허용하면 다른 창·에이전트의 요청까지 자동으로 허용되기 때문이다.
+fn session_grant_key(
+    caller: &Caller,
+    label: &str,
+    class: ActionClass,
+    action: &str,
+    target: &str,
+) -> Option<String> {
+    match caller {
+        Caller::Pane { pane, .. }
+            if pane != UNKNOWN_PANE
+                && matches!(
+                    class,
+                    ActionClass::Control | ActionClass::Read | ActionClass::Create
+                )
+                && !target.is_empty() =>
+        {
+            Some(crate::state::grant_key(label, pane, action, target))
+        }
+        _ => None,
+    }
+}
+
 impl Server {
     /// 소켓 상대 PID로 호출자를 정한다. PID를 모르면 가장 제한적인 쪽(알 수 없는 pane)으로 본다.
     pub fn identify(&self, pid: Option<u32>) -> Caller {
@@ -205,18 +234,7 @@ impl Server {
         let mut decision = verdict.decision;
         let mut how = decision.as_str().to_string();
 
-        // 창 사이 동작(지시·입력·실행·읽기·생성)만 "이 세션 동안 허용" 대상이다.
-        let grant_key = match caller {
-            Caller::Pane { pane, .. }
-                if matches!(
-                    class,
-                    ActionClass::Control | ActionClass::Read | ActionClass::Create
-                ) && !tlabel.is_empty() =>
-            {
-                Some(crate::state::grant_key(&label, pane, action, &tlabel))
-            }
-            _ => None,
-        };
+        let grant_key = session_grant_key(caller, &label, class, action, &tlabel);
         if decision == Decision::Ask {
             let granted = grant_key.as_ref().is_some_and(|k| {
                 self.st
@@ -547,4 +565,72 @@ pub fn refresh_integrity(server: &Arc<Server>, emit_on_fail: bool) {
             });
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pane(id: &str) -> Caller {
+        Caller::Pane {
+            pane: id.into(),
+            workspace: String::new(),
+            agent_kind: None,
+            agent_name: None,
+        }
+    }
+
+    #[test]
+    fn known_pane_gets_a_session_grant_key_for_cross_pane_actions() {
+        let c = pane("w2:p6");
+        let key = session_grant_key(
+            &c,
+            &c.label(),
+            ActionClass::Control,
+            "agent.prompt",
+            "w2:p1",
+        );
+        assert!(key.is_some());
+        // 다른 창은 다른 묶음이다
+        let other = pane("w2:p7");
+        let key2 = session_grant_key(
+            &other,
+            &other.label(),
+            ActionClass::Control,
+            "agent.prompt",
+            "w2:p1",
+        );
+        assert_ne!(key, key2);
+    }
+
+    #[test]
+    fn unknown_caller_never_gets_a_session_grant_key() {
+        // 식별 못 한 호출자는 모두 같은 이름이라, 묶으면 한 번의 허용이 다른 창 요청까지 허용한다.
+        let c = Server::unknown_caller();
+        for class in [ActionClass::Control, ActionClass::Read, ActionClass::Create] {
+            assert_eq!(
+                session_grant_key(&c, &c.label(), class, "agent.prompt", "w2:p1"),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn user_and_targetless_requests_get_no_session_grant_key() {
+        assert_eq!(
+            session_grant_key(
+                &Caller::User,
+                "user",
+                ActionClass::Control,
+                "agent.prompt",
+                "w2:p1"
+            ),
+            None
+        );
+        let c = pane("w2:p6");
+        assert_eq!(
+            session_grant_key(&c, &c.label(), ActionClass::Control, "agent.prompt", ""),
+            None
+        );
+    }
 }
