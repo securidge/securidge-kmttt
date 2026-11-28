@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.2 — 미출시 / Unreleased
+
+- Codex 연동 상태 수정: Codex를 연동해도 `kmttt integration status`가 `installed: false`로 나오고, 앱 시작 시 Codex용 kmttt 스킬이 새 버전으로 갱신되지 않던 문제를 고쳤습니다 / Fixed `kmttt integration status` reporting Codex as not installed after a successful install, which also kept the Codex kmttt skill from being refreshed on app start
+
 ## 1.3.1 — 2026-11-28
 
 공개 버전입니다. Public release.
