@@ -3,6 +3,30 @@
 # 로컬 실행은 임시 세션·폴더로 격리한다. GitHub Actions에서는 기존 default 세션을 쓴다.
 param([string]$Kmttt = "target\debug\kmttt.exe", [string]$Session, [switch]$Force)
 
+function Assert-E2EExternalTerminal([string]$pane) {
+    if ($pane) {
+        throw 'KMttt 밖 터미널에서 실행하세요. Run this E2E check from a terminal outside KMttt.'
+    }
+}
+
+# 환경 변경·실행 파일 조회·임시 폴더 생성 전에 거부한다. 호출자 식별 값은 지우지 않는다.
+Assert-E2EExternalTerminal $env:KMTTT_PANE
+
+# PowerShell의 출력 캡처 대신 cmd가 리다이렉트 파일 핸들을 직접 열어 자식에게 물려준다.
+# ProcessStartInfo로 명령줄을 넘겨 PowerShell 5.1의 native 인자 따옴표 손실을 피한다.
+function Invoke-E2ERedirectedList([string]$exe, [string]$sessionName, [string]$outputFile) {
+    $start = New-Object System.Diagnostics.ProcessStartInfo
+    $start.FileName = $env:ComSpec
+    $start.Arguments = '/d /s /c ""' + $exe + '" --session ' + $sessionName + ' workspace list > "' + $outputFile + '""'
+    $start.UseShellExecute = $false
+    $start.CreateNoWindow = $true
+    $process = [Diagnostics.Process]::Start($start)
+    try {
+        $process.WaitForExit()
+        if ($process.ExitCode -ne 0) { throw "Redirected workspace list failed: exit $($process.ExitCode)" }
+    } finally { $process.Dispose() }
+}
+
 function New-E2EContext([string]$sessionName, [bool]$isCI, [bool]$forceDefault) {
     if (-not $sessionName) {
         if ($isCI) { $sessionName = 'default' }
@@ -237,7 +261,7 @@ Start-Sleep -Seconds 2
 # 서버를 띄운 CLI의 출력을 파일로 돌렸을 때, 오래 사는 서버가 그 파일을 쥐고 있으면 안 된다.
 $leak = Join-Path $(if ($context.Root) { $context.Root } else { Split-Path $K }) "kmttt-leak-check.txt"
 if ($isCI) { cmd /c "$K --session $Session workspace list > $leak" }
-else { & $K --session $Session workspace list > $leak }
+else { Invoke-E2ERedirectedList $K $Session $leak }
 Start-Sleep -Seconds 1
 Check "auto-started server does not hold the caller's redirect file" { Remove-Item $leak -ErrorAction Stop; $true }
 Check "layout restored after restart" { WaitFor 20 { ((& $K pane list) | Out-String) -match [regex]::Escape("""$B""") } }
