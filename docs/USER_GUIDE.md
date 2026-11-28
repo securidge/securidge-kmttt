@@ -60,13 +60,13 @@ Double-click **KMttt Desktop**. The server starts by itself and a four-step setu
 | Top | Menu | File · Workspace · Panes · AI agents · Security · View · Settings · Help. Every feature is here. |
 | Below it | Toolbar | [Launch agent] [Workspace] [Tab] [Split left/right] [Split top/bottom] (icons), and on the right [Command palette] [? Guide] [⚙ Settings] |
 | Top banner | Alerts | What needs you now: approval requests, agents waiting for input, low remaining usage, a lost connection. For an approval request it shows the seconds left before automatic denial and [Allow once] (Alt+Y) [Deny] (Alt+N) [Details]. |
-| 💡 line | Do this now | A one-line hint for the current situation. ✕ hides it. |
+| 💡 line | Do this now | A one-line hint for the current situation (for example "This workspace has no AI agent"). ✕ hides it. |
 | Top left | Workspaces | Your projects. Click to switch; right-click to rename or close. |
 | Bottom left | AI usage | How much Claude and Codex usage is left and **when it resets**, with [Show current token usage] below ([section 7](#7-ai-usage-what-is-left-and-when-it-resets)). Collapse the sidebar with « or Ctrl+B. |
 | Center | View tabs | Terminal · Control center · Approvals · Audit log |
-| Above the panes | Tabs and pane info | The workspace's tabs, the selected pane's program and protection, pane buttons (split, enlarge, close) |
+| Above the panes | Tabs and pane info | The workspace's tabs, the selected pane's program and isolation level, pane buttons (split, enlarge, close) |
 | Top of each pane | Pane title row | Name, kind and state of the pane, with split, enlarge and close buttons. The server leaves one row for it so it never covers terminal text. |
-| Bottom | Status bar | Left: credit (Kwangmo Kim · non-commercial personal project). Middle: how many agents are working, waiting for you and idle (click to go there). Right: connection, protection, version |
+| Bottom | Status bar | Left: credit (Kwangmo Kim · non-commercial personal project). Middle: how many agents are working, waiting for you and idle (click to go there). Right: connection, isolation level, version |
 
 Press **[? Guide]** (F1) for getting started, how-tos, shortcuts, a glossary, and about/uninstall. If you know what you want to do but not where it is, press **[Command palette]** (Ctrl+Shift+P) and type "split", "approve", "usage", …
 
@@ -76,7 +76,7 @@ Press **[? Guide]** (F1) for getting started, how-tos, shortcuts, a glossary, an
 
 | To do this | Do this | Shortcut |
 | --- | --- | --- |
-| Open a project | [+ New workspace] → [Browse…] → pick a isolation level → [Create] | Ctrl+Shift+N |
+| Open a project | [+ New workspace] → [Browse…] → pick an isolation level → [Create] | Ctrl+Shift+N |
 | Launch an agent | [Launch agent] → pick the agent → name → [Start] | Ctrl+Shift+A |
 | Split the screen | [Split left/right] / [Split top/bottom], or right-click a pane | Alt+Shift+= / Alt+Shift+- |
 | Resize panes | Drag the line between two panes (double-click to split evenly) | Ctrl+Alt+= / Ctrl+Alt+- |
@@ -98,7 +98,7 @@ On Windows, when a pane closes, its shell exits or you quit KMttt, all of that p
 - **Start**: [Launch agent] and pick one. The program must be installed (Claude Code needs the `claude` command). "In a new pane to the right" splits the screen and starts it there.
 - **Talk to it**: click its pane and type. From another view, use [✉ Send prompt].
   - If the agent is waiting on a question or menu, Send prompt refuses, because your text would become the answer (a menu choice). Go to its pane and answer it yourself.
-- **States**:
+- **States**: shown in the sidebar, the pane info line and the Control center.
 
 | Shown | Meaning | What to do |
 | --- | --- | --- |
@@ -130,7 +130,7 @@ When an agent in one pane tries to run a command in, type into, or read **anothe
 
 ![Approval request](images/desktop/approval.png)
 
-The card shows who asked (which pane in which workspace), what it wants to do (for example "Run a command in another pane", `pane.run`), the target pane, and the exact text (secrets masked). Press [Allow once] or [Deny], or answer straight from the approval banner (Alt+Y allow, Alt+N deny). Unanswered requests are denied after the timeout (120 seconds by default, change it in Settings → Security policy); the banner and the card count down the seconds left. If KMttt is behind other windows, a Windows notification tells you, but you cannot approve from the notification: review the request in KMttt. Only a KMttt window that a person started can approve; a program started inside an agent's pane cannot.
+The card shows who asked (which pane in which workspace), what it wants to do (for example "Run a command in another pane", `pane.run`), the target pane, and the exact text (secrets masked). Press [Allow once] or [Deny], or answer straight from the approval banner (Alt+Y allow once, Alt+N deny). Unanswered requests are denied after the timeout (120 seconds by default, change it in Settings → Security policy); the banner and the card count down the seconds left. If KMttt is behind other windows, a Windows notification tells you, but you cannot approve from the notification: review the request in KMttt. Only a KMttt window that a person started can approve; a program started inside an agent's pane cannot.
 
 ### Allow for this session
 
@@ -157,14 +157,14 @@ Claude Code
 ```
 
 - **% left** = 100 − used. Bar colors: green (50% or more), yellow (20–50%), red (under 20%).
-- After the reset time passes it shows "Reset · updates on next use".
+- **5-hour and weekly limits**: your plan's short and long limits. After the reset time passes it shows "Reset · updates on next use".
 - The numbers are from the agent's **last response**; they do not change while you are not using it. The countdown is recalculated every time.
 
 ### Connecting Claude Code (once)
 
 Claude Code reports usage only through the input of its **official status line** ([docs](https://code.claude.com/docs/en/statusline)), so connect it once:
 
-1. Press [Connect] in the Claude Code box (or AI agents menu → Connect Claude usage display).
+1. Press [Connect] in the Claude Code box (or AI agents menu → Connect Claude usage…).
 2. Read the explanation and press [Connect]. By default it also connects the **state hooks** (recommended).
 3. It shows after Claude Code's next response. Claude Code's bottom line also shows `5h 23% · 7d 41%`.
 
@@ -226,7 +226,7 @@ At the top of the audit log you can filter by severity (info, warning, critical)
 
 [Edit settings file] opens the raw `config.toml` / `policy.toml`; saving runs the same checks as the server.
 
-![Settings — protection](images/desktop/settings-protection.png)
+![Settings — isolation](images/desktop/settings-protection.png)
 
 ### Isolation levels
 
@@ -283,7 +283,7 @@ On macOS use ⌘ instead of Ctrl.
 
 | Problem | Cause and fix |
 | --- | --- |
-| "Could not connect to the KMttt server" | Press [Start server]. Log: `%LOCALAPPDATA%\Securidge\kmttt\kmttt-server.log` |
+| "Could not connect to the KMttt server" | Press [Start server]. If that fails, check that `kmttt.exe` is in the same folder as KMttt Desktop (portable). Log: `%LOCALAPPDATA%\Securidge\kmttt\kmttt-server.log` |
 | "The connection was refused by the security rules" | The app was started inside an agent's pane or by an automation tool. Start it yourself from the desktop or Start menu. This is intended. |
 | SmartScreen warning | More info → Run anyway. See [Install](#1-install) to verify the file. |
 | AI usage is empty | Claude: did you Connect, are you on Pro/Max, has Claude Code answered once since? Codex: use it once, then press ↻. |
@@ -296,7 +296,7 @@ On macOS use ⌘ instead of Ctrl.
 **Windows**: Start → Settings → Apps → Installed apps → **KMttt Desktop** → Uninstall. This:
 
 1. Asks before stopping a running KMttt server (and every open terminal and agent).
-2. Removes the **hooks and status line this copy registered** in Claude Code and Codex, leaving entries made by a `kmttt` installed elsewhere, and restores your own Claude status line.
+2. Removes the **hooks and status line this copy registered** in Claude Code and Codex, leaving entries made by a `kmttt` installed elsewhere, and restores your own Claude status line and the Codex `notify` it saved (with `--replace` or `--chain`).
 3. Removes the program files and shortcuts.
 4. Asks whether to **delete settings (including security rules) and the audit log**. The default is No (keep), because the log is evidence you may need later. Kept in `%APPDATA%\Securidge\kmttt` and `%LOCALAPPDATA%\Securidge\kmttt`.
 
@@ -306,11 +306,11 @@ On macOS use ⌘ instead of Ctrl.
 
 ## 14. What the app does and does not do (security)
 
-- Every decision (approvals, rules, protection, the log, masking) is made by the KMttt server. The desktop app is a human client with the same rights as the terminal UI.
+- Every decision (approvals, rules, isolation, the log, masking) is made by the KMttt server. The desktop app is a human client with the same rights as the terminal UI.
 - The app's screens load only files built into the app; it never runs scripts from the internet.
 - The app does not use the methods that type into or read other panes behind your back (`pane.run`, `pane.send`, `pane.read`); it sends only keys you type.
 - Links inside terminals show the full address and ask before opening, and only `http`/`https` are allowed.
-- **Choosing a isolation level**: in "No isolation", an agent running as the same Windows user that deliberately attacks KMttt (for example by clicking [Allow once] through OS automation) is outside what KMttt contains; the log still records it. Run untrusted agents in `container` or `wsl`.
+- **Choosing an isolation level**: in "No isolation", an agent running as the same Windows user that deliberately attacks KMttt (for example by clicking [Allow once] through OS automation) is outside what KMttt contains; the log still records it. Run untrusted agents in `container` or `wsl`.
 
 Details: [Security review](SECURITY-REVIEW.md).
 

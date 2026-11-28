@@ -8,6 +8,7 @@
 // 사용: node ci/check-docs.js [저장소 루트]
 const fs = require("fs");
 const path = require("path");
+const { execFileSync } = require("child_process");
 const root = path.resolve(process.argv[2] || ".");
 
 const DOCS = [
@@ -19,6 +20,23 @@ const PAIRS = [["README.md", "README.ko.md"], ["docs/USER_GUIDE.md", "docs/USER_
 
 // 이 저장소의 절대 주소 → 저장소 안 경로(와 앵커).
 const SELF = /^https:\/\/(?:github\.com\/securidge\/securidge-kmttt\/(?:blob|tree)\/main|raw\.githubusercontent\.com\/securidge\/securidge-kmttt\/main)\/([^?#]*)(?:#(.*))?$/;
+// 태그로 고정한 주소(릴리스 노트 그림 등): …/blob|tree/v1.2.3/경로, raw…/v1.2.3/경로
+const SELF_TAG = /^https:\/\/(?:github\.com\/securidge\/securidge-kmttt\/(?:blob|tree)|raw\.githubusercontent\.com\/securidge\/securidge-kmttt)\/(v\d+\.\d+\.\d+)\/([^?#]+)/;
+
+// 태그 안에 그 파일이 있는지. 태그를 받아 오지 않은 체크아웃(CI 기본값)이면 지금 트리로 대신 본다.
+function existsAtTag(tag, p) {
+  try {
+    execFileSync("git", ["-C", root, "rev-parse", "--verify", "--quiet", `refs/tags/${tag}`], { stdio: "ignore" });
+  } catch {
+    return fs.existsSync(path.join(root, p));
+  }
+  try {
+    execFileSync("git", ["-C", root, "cat-file", "-e", `${tag}:${p}`], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // GitHub 제목 앵커: 소문자, 글자·숫자·공백·하이픈·밑줄만 남기고 공백을 하이픈으로.
 const slug = (h) => h.trim().toLowerCase().replace(/[^\p{L}\p{N}\p{M} _-]/gu, "").replace(/ /g, "-");
@@ -67,6 +85,11 @@ function checkTarget(rel, line, url, fromRoot) {
 
 // 절대 주소면 이 저장소 주소인지 보고 확인한다. 처리했으면 true.
 function checkAbsolute(rel, line, url) {
+  const tagged = SELF_TAG.exec(url.replace(/[.,;:]+$/, ""));
+  if (tagged) {
+    if (!existsAtTag(tagged[1], decodeURIComponent(tagged[2]))) report(rel, line, `broken link ${url} (not in ${tagged[1]})`);
+    return true;
+  }
   const self = SELF.exec(url.replace(/[.,;:]+$/, ""));
   if (self) checkTarget(rel, line, self[1] + (self[2] ? "#" + self[2] : ""), true);
   return /^(https?:|mailto:|data:)/.test(url);

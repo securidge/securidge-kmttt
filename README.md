@@ -43,7 +43,7 @@ cargo build --release -p kmttt
 
 ## Desktop app (window GUI)
 
-If you would rather click than learn key bindings, use **KMttt Desktop**. It is a window app that connects to the same server, so you can use it alongside the terminal UI and the CLI. Every security decision (approvals, log, masking, protection) is still made by the server.
+If you would rather click than learn key bindings, use **KMttt Desktop**. It is a window app that connects to the same server, so you can use it alongside the terminal UI and the CLI. Every security decision (approvals, log, masking, isolation) is still made by the server.
 
 **→ Full instructions: [KMttt Desktop user guide](docs/USER_GUIDE.md)** (install, tour, approvals, AI usage, settings, shortcuts, glossary, troubleshooting, uninstall)
 
@@ -54,11 +54,11 @@ If you would rather click than learn key bindings, use **KMttt Desktop**. It is 
 - **AI usage**: the bottom-left panel shows how much Claude Code and Codex usage is **left (%) and a reset countdown** ("Resets in 4h 30m"). Claude needs a one-time [Connect] and works on Pro/Max plans only ([guide section 7](docs/USER_GUIDE.md#7-ai-usage-what-is-left-and-when-it-resets)).
 - **Help**: `F1` or [? Guide] has getting started, how-tos, shortcuts, a glossary, and about/uninstall. The 💡 line tells you what to do next.
 - **Command palette**: press `Ctrl+Shift+P` and type what you want to do ("split", "approve", "usage").
-- **Uninstall**: Windows Settings → Apps → KMttt Desktop → Uninstall. It stops the server, removes the hooks and status line this copy registered in Claude/Codex (restoring your own status line), and asks whether to delete settings and the audit log (default: keep).
+- **Uninstall**: Windows Settings → Apps → KMttt Desktop → Uninstall. It stops the server, removes the hooks and status line this copy registered in Claude/Codex (restoring your own Claude status line and the Codex `notify` it saved), and asks whether to delete settings and the audit log (default: keep).
 
 | To do this | Do this |
 | --- | --- |
-| Open a project | [+ New workspace] → pick a folder → pick a isolation level |
+| Open a project | [+ New workspace] → pick a folder → pick an isolation level |
 | Launch an agent | [Launch agent] → pick Claude Code, Codex, … |
 | Split and resize | [Split left/right] / [Split top/bottom], drag the line between panes |
 | Answer an approval | [View] on the approval banner → [Allow once] / [Deny] |
@@ -105,7 +105,7 @@ Every command prints JSON. Exit codes: `0` ok, `1` error, `2` not found or bad i
 
 KMttt ships an agent skill that teaches Claude Code and Codex how to work inside KMttt panes: message another agent with a single approval, wait for and read its screen, and handle approvals, denials and sandbox network blocks without working around them.
 
-- **Automatic**: connecting Claude Code or Codex to KMttt (KMttt Desktop: Agent → Connect Claude usage, or `kmttt integration install claude|codex`) installs the skill too, and disconnecting or uninstalling removes it.
+- **Automatic**: connecting Claude Code (KMttt Desktop: AI agents → Connect Claude usage…, or `kmttt integration install claude`) or Codex (`kmttt integration install codex`) installs the skill too, and disconnecting or uninstalling removes it.
 - **Claude Code**: `/plugin marketplace add securidge/securidge-kmttt`, then `/plugin install kmttt@securidge`
 - **Codex**: copy [`plugins/kmttt/skills/kmttt`](plugins/kmttt/skills/kmttt) to `~/.agents/skills/kmttt` (or a repository's `.agents/skills/kmttt`)
 - **Other tools that read `SKILL.md`**: `npx skills add securidge/securidge-kmttt`
