@@ -61,7 +61,7 @@ If you would rather click than learn key bindings, use **KMttt Desktop**. It is 
 | Open a project | [+ New workspace] → pick a folder → pick an isolation level |
 | Launch an agent | [Launch agent] → pick Claude Code, Codex, … |
 | Split and resize | [Split left/right] / [Split top/bottom], drag the line between panes |
-| Answer an approval | [View] on the approval banner → [Allow once] / [Deny] |
+| Answer an approval | [Allow once] / [Allow for this session] / [Deny] on the approval banner ([Details] to read more) |
 | See every agent | [Control center] tab |
 | Change the security policy or isolation | [⚙ Settings] → [Security policy] / [Isolation] → [Save] (changes that weaken security ask again) |
 | Copy and paste | Drag to select → `Ctrl+Shift+C` / `Ctrl+Shift+V` (also `Ctrl+V` on Windows), or right-click |
@@ -145,6 +145,7 @@ Things to know:
 - **A person running `kmttt` inside a pane counts as an agent.** Approve from a terminal outside KMttt, from the TUI's approval panel, or from the web console.
 - **The `container` egress allowlist is advisory.** The container's default `bridge` network can connect directly, and on native Linux Docker the host proxy is not reachable from the container. In `restricted` on Linux 6.7+ and macOS, egress is enforced. On older Linux kernels KMttt warns that it is not.
 - **Windows `restricted` only limits memory and process count.** It does not restrict the file system, and `kmttt` reports its strength as `low`. Use `wsl` or `container` instead.
+- **On Windows, closing a pane ends every program started from it.** GUI apps first opened from the pane (VS Code, a sign-in browser) close too, and the same happens when its shell exits or you quit KMttt. Open apps you want to keep outside KMttt.
 - **State detection uses a screen rule file (manifest) per agent.** When an agent changes its UI, edit its manifest (`kmttt server agent-manifests` lists them).
 - **Redaction cannot catch a secret format it has no rule for**, and it does not control what an agent sends to its own vendor.
 
