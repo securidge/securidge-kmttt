@@ -2,6 +2,7 @@
 
 ## 1.3.3 — 미출시 / Unreleased
 
+- Codex 연동에 `--replace`를 쓰면 기존 notify를 보관하고 해제 시 복원합니다. 설치 출력에 기존 notify와 관련 기능이 일시 중단됨을 안내합니다 / Codex integration can save an existing notify with `--replace` and restore it on uninstall; installation warns that the previous notifier and related features are temporarily disabled
 - 세션 허용이 불가능한 승인 요청에 세션 허용을 보내면 실행을 허용하지 않고 대기 상태를 유지해, 한 번 허용이나 거부로 다시 결정할 수 있습니다 / Invalid session approval decisions leave the request pending without allowing execution, so it can be retried as a single allow or deny
 
 ## 1.3.2 — 2026-11-28

@@ -14,7 +14,7 @@ use crate::cli::IntegrationCmd;
 use anyhow::{bail, Context, Result};
 use kmttt_core::client::RpcClient;
 use serde_json::{json, Value};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -257,6 +257,8 @@ pub fn run(ic: IntegrationCmd) -> Result<i32> {
         IntegrationCmd::Install { agent, replace } => {
             let msg = if agent == "claude-usage" {
                 install_claude_usage(replace)?
+            } else if replace {
+                install_with(&agent, true)?
             } else {
                 install(&agent)?
             };
@@ -301,17 +303,19 @@ pub fn installed(agent: &str) -> Result<bool> {
         return Ok(statusline_is_ours(&v));
     }
     if agent == "codex" {
-        // install이 쓰는 TOML 배열 형태: notify = ["…kmttt…", "hook", "codex", "notify"]
-        return Ok(text.lines().any(|l| {
-            l.trim_start().starts_with("notify")
-                && l.contains("kmttt")
-                && l.contains("\"hook\", \"codex\"")
-        }));
+        return Ok(parse_codex_notify(&text)?.is_some_and(|n| codex_notify_is_ours(&n.argv)));
     }
     Ok(text.contains(&format!("hook {agent}")) && text.contains("kmttt"))
 }
 
 pub fn install(agent: &str) -> Result<String> {
+    install_with(agent, false)
+}
+
+fn install_with(agent: &str, replace: bool) -> Result<String> {
+    if agent == "codex" {
+        return install_codex(replace);
+    }
     let f = file_for(agent)?;
     if let Some(d) = f.parent() {
         std::fs::create_dir_all(d)?;
@@ -358,32 +362,6 @@ pub fn install(agent: &str) -> Result<String> {
             }
             std::fs::write(&f, serde_json::to_string_pretty(&v)? + "\n")?;
         }
-        "codex" => {
-            let text = std::fs::read_to_string(&f).unwrap_or_default();
-            if text
-                .lines()
-                .any(|l| l.trim_start().starts_with("notify") && !l.contains("kmttt"))
-            {
-                bail!(
-                    "{} already has its own `notify` setting; KMttt will not overwrite it",
-                    f.display()
-                );
-            }
-            if !text.contains("hook\", \"codex\"") {
-                let line = format!(
-                    "notify = [{}, \"hook\", \"codex\", \"notify\"]  # added by kmttt",
-                    toml_str(&exe())
-                );
-                // 최상위 키는 첫 [표] 앞에 넣어야 한다.
-                let mut lines: Vec<String> = text.lines().map(String::from).collect();
-                let at = lines
-                    .iter()
-                    .position(|l| l.trim_start().starts_with('['))
-                    .unwrap_or(lines.len());
-                lines.insert(at, line);
-                std::fs::write(&f, lines.join("\n") + "\n")?;
-            }
-        }
         _ => unreachable!(),
     }
     let skill = install_skill(agent)?
@@ -399,6 +377,196 @@ pub fn install(agent: &str) -> Result<String> {
 
 fn toml_str(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+struct CodexNotify {
+    span: std::ops::Range<usize>,
+    argv: Vec<String>,
+}
+
+fn parse_codex_notify(text: &str) -> Result<Option<CodexNotify>> {
+    let mut root: std::collections::BTreeMap<String, toml::Spanned<toml::Value>> =
+        toml::from_str(text).context("Codex config is not valid TOML")?;
+    let Some(notify) = root.remove("notify") else {
+        return Ok(None);
+    };
+    let argv = notify
+        .get_ref()
+        .as_array()
+        .and_then(|a| a.iter().map(|v| v.as_str().map(String::from)).collect())
+        .ok_or_else(|| anyhow::anyhow!("Codex notify must be an array of strings"))?;
+    Ok(Some(CodexNotify {
+        span: notify.span(),
+        argv,
+    }))
+}
+
+fn codex_notify_is_ours(argv: &[String]) -> bool {
+    if argv.len() != 4 || argv[1..] != ["hook", "codex", "notify"] {
+        return false;
+    }
+    let normalized = argv[0].replace('\\', "/");
+    let name = normalized.rsplit('/').next().unwrap_or_default();
+    argv[0] == exe() || name.eq_ignore_ascii_case("kmttt") || name.eq_ignore_ascii_case("kmttt.exe")
+}
+
+fn codex_previous_file(f: &std::path::Path) -> PathBuf {
+    f.with_file_name(format!(
+        "{}.kmttt-notify-previous.json",
+        f.file_name().unwrap_or_default().to_string_lossy()
+    ))
+}
+
+/// Validate ownership and recovery data before editing either file.
+fn read_codex_previous(f: &std::path::Path, argv: &[String]) -> Result<Option<Value>> {
+    let bytes = match std::fs::read(codex_previous_file(f)) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.into()),
+    };
+    let record: Value = serde_json::from_slice(&bytes).context("invalid saved Codex notify")?;
+    if record["version"] != 1
+        || record["installed_notify"] != json!(argv)
+        || record["executable"].as_str() != argv.first().map(String::as_str)
+        || record.get("previous_notify").is_none()
+    {
+        bail!("saved Codex notify does not match the current integration; left unchanged");
+    }
+    match &record["previous_notify"] {
+        Value::Null => {}
+        Value::String(raw) => {
+            let doc = format!("notify = {raw}");
+            let parsed = parse_codex_notify(&doc)?.expect("notify key was supplied");
+            if &doc[parsed.span] != raw {
+                bail!("invalid saved Codex notify value; left unchanged");
+            }
+        }
+        _ => bail!("invalid saved Codex notify value; left unchanged"),
+    }
+    Ok(Some(record))
+}
+
+const CODEX_NOTIFY_PAUSED: &str = "\nExisting Codex notify is disabled while KMttt is installed; related features (such as computer use) may stop until you uninstall the KMttt integration.";
+
+fn install_codex(replace: bool) -> Result<String> {
+    let f = codex_config();
+    let text = match std::fs::read_to_string(&f) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e.into()),
+    };
+    let notify = parse_codex_notify(&text)?;
+    let paused;
+    if let Some(n) = notify.as_ref().filter(|n| codex_notify_is_ours(&n.argv)) {
+        // Legacy installations have no sidecar. Reinstalling must not replace
+        // the original notifier saved by a previous --replace installation.
+        paused =
+            read_codex_previous(&f, &n.argv)?.is_some_and(|r| r["previous_notify"].is_string());
+    } else {
+        if notify.is_some() && !replace {
+            bail!("{} already has its own `notify` setting; run again with --replace to save and replace it (restored on uninstall)", f.display());
+        }
+        let previous = notify.as_ref().map(|n| text[n.span.clone()].to_string());
+        paused = previous.is_some();
+        let argv = vec![exe(), "hook".into(), "codex".into(), "notify".into()];
+        let value = format!(
+            "[{}]",
+            argv.iter()
+                .map(|s| toml_str(s))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let mut updated = text.clone();
+        match notify {
+            Some(n) => updated.replace_range(n.span, &value),
+            None => {
+                let at = if text.starts_with('\u{feff}') {
+                    '\u{feff}'.len_utf8()
+                } else {
+                    0
+                };
+                let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+                updated.insert_str(at, &format!("notify = {value}  # added by kmttt{newline}"));
+            }
+        }
+        // Check the edited document before creating a backup or changing config.
+        parse_codex_notify(&updated)?;
+        if let Some(dir) = f.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        backup(&f)?;
+        let record = serde_json::to_vec_pretty(&json!({
+            "version": 1, "executable": argv[0], "installed_notify": argv,
+            "previous_notify": previous,
+        }))?;
+        // Never clobber an earlier recovery record, including after a failed write.
+        let pf = codex_previous_file(&f);
+        let mut saved = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&pf)
+            .with_context(|| format!("cannot save previous Codex notify in {}", pf.display()))?;
+        if let Err(e) = saved.write_all(&record).and_then(|()| saved.sync_all()) {
+            drop(saved);
+            let _ = std::fs::remove_file(&pf);
+            return Err(e.into());
+        }
+        drop(saved);
+        std::fs::write(&f, updated)?;
+    }
+    let skill = install_skill("codex")?
+        .map(|m| format!("\n{m}"))
+        .unwrap_or_default();
+    Ok(format!(
+        "installed codex integration in {}{skill}{}",
+        f.display(),
+        if paused { CODEX_NOTIFY_PAUSED } else { "" }
+    ))
+}
+
+fn uninstall_codex(f: &std::path::Path, text: &str, only_this_exe: bool) -> Result<String> {
+    let Some(n) = parse_codex_notify(text)?.filter(|n| {
+        codex_notify_is_ours(&n.argv) && (!only_this_exe || mentions_this_exe(&n.argv[0]))
+    }) else {
+        return Ok(
+            "no matching KMttt notify; current config and any saved previous notify left unchanged"
+                .into(),
+        );
+    };
+    let record = read_codex_previous(f, &n.argv)?;
+    let mut updated = text.to_string();
+    if let Some(raw) = record.as_ref().and_then(|r| r["previous_notify"].as_str()) {
+        updated.replace_range(n.span, raw);
+    } else {
+        let start = text[..n.span.start]
+            .rfind('\n')
+            .map(|i| i + 1)
+            .unwrap_or_else(|| {
+                if text.starts_with('\u{feff}') {
+                    '\u{feff}'.len_utf8()
+                } else {
+                    0
+                }
+            });
+        let end = text[n.span.end..]
+            .find('\n')
+            .map(|i| n.span.end + i + 1)
+            .unwrap_or(text.len());
+        updated.replace_range(start..end, "");
+    }
+    parse_codex_notify(&updated)?;
+    std::fs::write(f, updated)?;
+    // Delete recovery data only after the config has been restored successfully.
+    if record.is_some() {
+        std::fs::remove_file(codex_previous_file(f))?;
+    }
+    let skill = uninstall_skill("codex", only_this_exe)?
+        .map(|m| format!("\n{m}"))
+        .unwrap_or_default();
+    Ok(format!(
+        "removed codex integration from {}{skill}",
+        f.display()
+    ))
 }
 
 /// Claude Code 상태 줄을 `kmttt statusline`으로 바꾼다. 다른 상태 줄이 있으면 `replace` 없이는 거부한다.
@@ -455,6 +623,9 @@ pub fn uninstall_with(agent: &str, only_this_exe: bool) -> Result<String> {
     let Ok(text) = std::fs::read_to_string(&f) else {
         return Ok(format!("{} not found; nothing to remove", f.display()));
     };
+    if agent == "codex" {
+        return uninstall_codex(&f, &text, only_this_exe);
+    }
     let ours = |c: &str, a: &str| is_ours(c, a) && (!only_this_exe || mentions_this_exe(c));
     if agent == "claude-usage" {
         {
@@ -509,17 +680,6 @@ pub fn uninstall_with(agent: &str, only_this_exe: bool) -> Result<String> {
                 v.as_object_mut().expect("object").remove("hooks");
             }
             std::fs::write(&f, serde_json::to_string_pretty(&v)? + "\n")?;
-        }
-        "codex" => {
-            let kept: Vec<&str> = text
-                .lines()
-                .filter(|l| {
-                    !(l.trim_start().starts_with("notify")
-                        && l.contains("kmttt")
-                        && (!only_this_exe || mentions_this_exe(l)))
-                })
-                .collect();
-            std::fs::write(&f, kept.join("\n") + "\n")?;
         }
         _ => unreachable!(),
     }
@@ -677,6 +837,148 @@ mod tests {
             assert_eq!(result.is_err(), panic);
             let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             assert_eq!(ENV_KEYS.map(std::env::var_os), previous);
+        }
+    }
+
+    #[test]
+    fn codex_replace_round_trips_original_notify_and_preserves_other_edits() {
+        for original in [
+            "# 한글 comment\n\"notify\" = [\n 'user-notifier', # inner comment\n 'arg'\n] # trailing\n[profiles.fast]\nnotify = ['nested']\n",
+            "\u{feff}notify = ['my-kmttt-notifier'] # comment\r\nmodel = 'x'\r\n",
+        ] {
+            let d = tempfile::tempdir().unwrap();
+            let _env = TestEnv::new(d.path());
+            let f = codex_config();
+            std::fs::write(&f, original).unwrap();
+            assert!(install("codex").is_err());
+            assert_eq!(std::fs::read_to_string(&f).unwrap(), original);
+            assert!(!codex_previous_file(&f).exists());
+            run(IntegrationCmd::Install { agent: "codex".into(), replace: true }).unwrap();
+            assert!(installed("codex").unwrap());
+            let saved = std::fs::read(codex_previous_file(&f)).unwrap();
+            let msg = install_with("codex", true).unwrap();
+            assert!(msg.contains("Existing Codex notify is disabled"));
+            assert!(msg.contains("computer use"));
+            install("codex").unwrap();
+            assert_eq!(std::fs::read(codex_previous_file(&f)).unwrap(), saved);
+            let addition = "\n[added_later]\nkeep = 'new setting'\n";
+            let updated = std::fs::read_to_string(&f).unwrap() + addition;
+            std::fs::write(&f, updated).unwrap();
+            uninstall("codex").unwrap();
+            assert_eq!(std::fs::read_to_string(&f).unwrap(), original.to_string() + addition);
+            assert!(!installed("codex").unwrap());
+            assert!(!codex_previous_file(&f).exists());
+        }
+    }
+
+    #[test]
+    fn codex_without_root_notify_round_trips_nested_notify_and_line_endings() {
+        for original in [
+            "",
+            "\u{feff}# keep\r\n[profiles.fast]\r\nnotify = ['nested']\r\n",
+        ] {
+            let d = tempfile::tempdir().unwrap();
+            let _env = TestEnv::new(d.path());
+            let f = codex_config();
+            std::fs::write(&f, original).unwrap();
+            let msg = install("codex").unwrap();
+            assert!(!msg.contains("Existing Codex notify is disabled"));
+            assert!(installed("codex").unwrap());
+            uninstall("codex").unwrap();
+            assert_eq!(std::fs::read_to_string(&f).unwrap(), original);
+        }
+    }
+
+    #[test]
+    fn codex_user_modified_notify_and_saved_original_are_left_unchanged() {
+        let d = tempfile::tempdir().unwrap();
+        let _env = TestEnv::new(d.path());
+        let f = codex_config();
+        std::fs::write(&f, "notify = ['original']\n").unwrap();
+        install_with("codex", true).unwrap();
+        let saved = std::fs::read(codex_previous_file(&f)).unwrap();
+        let changed = "notify = ['user-changed']\n";
+        std::fs::write(&f, changed).unwrap();
+        assert!(uninstall("codex").unwrap().contains("unchanged"));
+        assert!(install_with("codex", true).is_err());
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), changed);
+        assert_eq!(std::fs::read(codex_previous_file(&f)).unwrap(), saved);
+    }
+
+    #[test]
+    fn codex_if_this_exe_does_not_restore_another_installations_notify() {
+        let d = tempfile::tempdir().unwrap();
+        let _env = TestEnv::new(d.path());
+        let f = codex_config();
+        let original = "notify = ['original']\n";
+        std::fs::write(&f, original).unwrap();
+        install_with("codex", true).unwrap();
+        let other = d.path().join("other/kmttt.exe").display().to_string();
+        let mut record: Value =
+            serde_json::from_slice(&std::fs::read(codex_previous_file(&f)).unwrap()).unwrap();
+        record["executable"] = json!(other);
+        record["installed_notify"][0] = json!(other);
+        std::fs::write(codex_previous_file(&f), record.to_string()).unwrap();
+        let current = format!(
+            "notify = [{}, \"hook\", \"codex\", \"notify\"]\n",
+            toml_str(&other)
+        );
+        std::fs::write(&f, &current).unwrap();
+        uninstall_with("codex", true).unwrap();
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), current);
+        assert!(codex_previous_file(&f).exists());
+        uninstall_with("codex", false).unwrap();
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), original);
+    }
+
+    #[test]
+    fn codex_invalid_config_or_failed_recovery_save_never_changes_config() {
+        let d = tempfile::tempdir().unwrap();
+        let _env = TestEnv::new(d.path());
+        let f = codex_config();
+        for invalid in ["notify = [", "notify = 'wrong type'", "notify = [42]"] {
+            std::fs::write(&f, invalid).unwrap();
+            assert!(install_with("codex", true).is_err());
+            assert_eq!(std::fs::read_to_string(&f).unwrap(), invalid);
+            assert!(!codex_previous_file(&f).exists());
+        }
+        let original = "notify = ['original']\n";
+        std::fs::write(&f, original).unwrap();
+        std::fs::create_dir(codex_previous_file(&f)).unwrap();
+        assert!(install_with("codex", true).is_err());
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), original);
+    }
+
+    #[test]
+    fn codex_corrupt_or_mismatched_recovery_record_never_changes_config() {
+        let d = tempfile::tempdir().unwrap();
+        let _env = TestEnv::new(d.path());
+        let f = codex_config();
+        std::fs::write(&f, "notify = ['original']\n").unwrap();
+        install_with("codex", true).unwrap();
+        let current = std::fs::read_to_string(&f).unwrap();
+        let valid: Value =
+            serde_json::from_slice(&std::fs::read(codex_previous_file(&f)).unwrap()).unwrap();
+        for broken in [
+            "not json".to_string(),
+            {
+                let mut v = valid.clone();
+                v["installed_notify"][0] = json!("other");
+                v.to_string()
+            },
+            {
+                let mut v = valid.clone();
+                v["previous_notify"] = json!("['original']\nmodel = 'injected'");
+                v.to_string()
+            },
+        ] {
+            std::fs::write(codex_previous_file(&f), &broken).unwrap();
+            assert!(uninstall("codex").is_err());
+            assert_eq!(std::fs::read_to_string(&f).unwrap(), current);
+            assert_eq!(
+                std::fs::read_to_string(codex_previous_file(&f)).unwrap(),
+                broken
+            );
         }
     }
 
