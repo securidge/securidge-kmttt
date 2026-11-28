@@ -288,7 +288,14 @@ pub fn run(ic: IntegrationCmd) -> Result<i32> {
                 .unwrap_or_else(|| vec!["claude".into(), "codex".into(), "claude-usage".into()]);
             let mut out = Vec::new();
             for a in agents {
-                out.push(json!({"agent": a, "installed": installed(&a)?, "file": file_for(&a)?}));
+                let reason = diagnose(&a)?;
+                out.push(json!({
+                    "agent": a,
+                    "installed": installed(&a)?,
+                    "file": file_for(&a)?,
+                    "reason": reason.code(),
+                    "reason_text": reason.text(),
+                }));
             }
             println!("{}", serde_json::to_string_pretty(&out)?);
         }
@@ -319,6 +326,134 @@ pub fn installed(agent: &str) -> Result<bool> {
             .is_some_and(|n| codex_notify_is_ours(&n.argv)));
     }
     Ok(text.contains(&format!("hook {agent}")) && text.contains("kmttt"))
+}
+
+/// Fixed reason why an integration works or not, for `integration status`.
+/// Codes and texts are constants: no paths, commands or file contents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reason {
+    Ok,
+    ConfigMissing,
+    ConfigInvalid,
+    NotifyMissing,
+    NotifyOtherProgram,
+    NotifyOtherKmttt,
+    ChainRegistrationMismatch,
+    ChainTargetMissing,
+    ChainRejected,
+    HooksMissing,
+    HooksPartial,
+    StatuslineMissing,
+    StatuslineOther,
+}
+
+impl Reason {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::ConfigMissing => "config_missing",
+            Self::ConfigInvalid => "config_invalid",
+            Self::NotifyMissing => "notify_missing",
+            Self::NotifyOtherProgram => "notify_other_program",
+            Self::NotifyOtherKmttt => "notify_other_kmttt",
+            Self::ChainRegistrationMismatch => "chain_registration_mismatch",
+            Self::ChainTargetMissing => "chain_target_missing",
+            Self::ChainRejected => "chain_rejected",
+            Self::HooksMissing => "hooks_missing",
+            Self::HooksPartial => "hooks_partial",
+            Self::StatuslineMissing => "statusline_missing",
+            Self::StatuslineOther => "statusline_other",
+        }
+    }
+
+    pub fn text(self) -> &'static str {
+        match self {
+            Self::Ok => "integration is installed and working",
+            Self::ConfigMissing => "agent settings file does not exist",
+            Self::ConfigInvalid => "agent settings file cannot be parsed",
+            Self::NotifyMissing => "Codex notify is not set",
+            Self::NotifyOtherProgram => "Codex notify runs another program",
+            Self::NotifyOtherKmttt => "Codex notify uses a different KMttt installation",
+            Self::ChainRegistrationMismatch => {
+                "chained notify no longer matches its registration; reinstall --chain"
+            }
+            Self::ChainTargetMissing => "chained notify program cannot be found",
+            Self::ChainRejected => {
+                "chained notify program is refused (KMttt itself, a shell or a script)"
+            }
+            Self::HooksMissing => "Claude Code hooks for KMttt are not set",
+            Self::HooksPartial => "some Claude Code hook events for KMttt are missing",
+            Self::StatuslineMissing => "Claude Code status line is not set",
+            Self::StatuslineOther => "Claude Code status line runs another program",
+        }
+    }
+}
+
+/// Diagnose one integration. The first problem that stops it wins.
+pub fn diagnose(agent: &str) -> Result<Reason> {
+    let f = file_for(agent)?;
+    let text = match std::fs::read_to_string(&f) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Reason::ConfigMissing),
+        Err(_) => return Ok(Reason::ConfigInvalid),
+    };
+    if agent == "codex" {
+        let Ok(notify) = parse_codex_notify(&text) else {
+            return Ok(Reason::ConfigInvalid);
+        };
+        let Some(notify) = notify else {
+            return Ok(Reason::NotifyMissing);
+        };
+        if !codex_notify_is_ours(&notify.argv) {
+            return Ok(Reason::NotifyOtherProgram);
+        }
+        if !mentions_this_exe(&notify.argv[0]) {
+            return Ok(Reason::NotifyOtherKmttt);
+        }
+        return Ok(match registered_codex_chain() {
+            Ok(_) => Reason::Ok,
+            Err(e) => match crate::notify_chain::problem_of(&e) {
+                Some(crate::notify_chain::ChainProblem::TargetMissing) => {
+                    Reason::ChainTargetMissing
+                }
+                Some(crate::notify_chain::ChainProblem::Rejected) => Reason::ChainRejected,
+                _ => Reason::ChainRegistrationMismatch,
+            },
+        });
+    }
+    let Ok(v) = serde_json::from_str::<Value>(&text) else {
+        return Ok(Reason::ConfigInvalid);
+    };
+    if !v.is_object() {
+        return Ok(Reason::ConfigInvalid);
+    }
+    if agent == "claude-usage" {
+        return Ok(if statusline_is_ours(&v) {
+            Reason::Ok
+        } else if v["statusLine"].is_null() {
+            Reason::StatuslineMissing
+        } else {
+            Reason::StatuslineOther
+        });
+    }
+    let hooked = CLAUDE_EVENTS
+        .iter()
+        .filter(|ev| {
+            v["hooks"][**ev].as_array().is_some_and(|groups| {
+                groups.iter().any(|g| {
+                    g["hooks"].as_array().is_some_and(|hs| {
+                        hs.iter()
+                            .any(|h| h["command"].as_str().is_some_and(|c| is_ours(c, "claude")))
+                    })
+                })
+            })
+        })
+        .count();
+    Ok(match hooked {
+        0 => Reason::HooksMissing,
+        n if n < CLAUDE_EVENTS.len() => Reason::HooksPartial,
+        _ => Reason::Ok,
+    })
 }
 
 pub fn install(agent: &str) -> Result<String> {
@@ -667,36 +802,56 @@ fn registered_codex_chain() -> Result<Option<Vec<String>>> {
     else {
         return Ok(None);
     };
-    let Some(record) = read_codex_previous(&f, &n.argv)? else {
+    use crate::notify_chain::{chain_error, ChainProblem::*};
+    let Some(record) = read_codex_previous(&f, &n.argv).map_err(|_| {
+        chain_error(
+            Mismatch,
+            "saved Codex notify does not match the current integration",
+        )
+    })?
+    else {
         return Ok(None);
     };
     let Some(argv) = record.get("chain_argv") else {
         return Ok(None);
     };
     if record["chain_config"] != json!(f.canonicalize()?) {
-        bail!("chain registration belongs to another config");
+        return Err(chain_error(
+            Mismatch,
+            "chain registration belongs to another config",
+        ));
     }
     let argv: Vec<String> = argv
         .as_array()
         .and_then(|a| a.iter().map(|v| v.as_str().map(String::from)).collect())
-        .context("invalid chain argv")?;
-    let previous = parse_codex_notify(&format!(
-        "notify = {}",
-        record["previous_notify"]
-            .as_str()
-            .context("missing previous notify")?
-    ))?
-    .context("missing previous notify")?;
+        .ok_or_else(|| chain_error(Mismatch, "invalid chain argv"))?;
+    let previous = record["previous_notify"]
+        .as_str()
+        .and_then(|raw| {
+            parse_codex_notify(&format!("notify = {raw}"))
+                .ok()
+                .flatten()
+        })
+        .ok_or_else(|| chain_error(Mismatch, "missing previous notify"))?;
     if argv.len() != previous.argv.len() || argv.get(1..) != previous.argv.get(1..) {
-        bail!("chain arguments do not match the saved notify");
+        return Err(chain_error(
+            Mismatch,
+            "chain arguments do not match the saved notify",
+        ));
     }
     if let Some(program) = previous
         .argv
         .first()
         .filter(|p| std::path::Path::new(p).is_absolute())
     {
-        if std::path::Path::new(program).canonicalize()? != std::path::Path::new(&argv[0]) {
-            bail!("chain executable does not match the saved notify");
+        let program = std::path::Path::new(program)
+            .canonicalize()
+            .map_err(|_| chain_error(TargetMissing, "open registered chain executable"))?;
+        if program != std::path::Path::new(&argv[0]) {
+            return Err(chain_error(
+                Mismatch,
+                "chain executable does not match the saved notify",
+            ));
         }
     }
     crate::notify_chain::validate(&argv)?;

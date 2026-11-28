@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.5 — 미출시 / Unreleased
+
+- `kmttt integration status`가 연동마다 고정 사유 코드(`reason`)와 짧은 설명(`reason_text`)을 함께 보여 줍니다. 설정 파일 없음·깨짐, 다른 프로그램의 notify, 등록 불일치, 연결 대상 없음·거부 등을 경로나 명령 없이 알려 줍니다 / `kmttt integration status` now adds a fixed reason code (`reason`) and a short explanation (`reason_text`) per integration, such as a missing or broken settings file, a notify owned by another program, a registration mismatch, or a missing or refused chained program, without paths or commands
+
 ## 1.3.4 — 2026-11-28
 
 - 승인 알림 막대·Windows 알림·승인 상세·감사 로그에서 요청한 창이 `w2:p6(codex)` 같은 가공 전 표기 대신 창 이름으로 보이고, 식별하지 못한 창은 그렇다고 표시합니다. 감사 로그를 창으로 걸러 볼 때 이름이 붙은 에이전트의 기록이 빠지던 문제도 고쳤습니다 / The approval banner, Windows notification, approval details and audit log now name the requesting pane instead of a raw label like `w2:p6(codex)` and indicate when the pane cannot be identified; filtering the audit log by pane no longer drops records from named agents
