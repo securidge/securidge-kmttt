@@ -21,21 +21,25 @@ const PAIRS = [["README.md", "README.ko.md"], ["docs/USER_GUIDE.md", "docs/USER_
 // 이 저장소의 절대 주소 → 저장소 안 경로(와 앵커).
 const SELF = /^https:\/\/(?:github\.com\/securidge\/securidge-kmttt\/(?:blob|tree)\/main|raw\.githubusercontent\.com\/securidge\/securidge-kmttt\/main)\/([^?#]*)(?:#(.*))?$/;
 // 태그로 고정한 주소(릴리스 노트 그림 등): …/blob|tree/v1.2.3/경로, raw…/v1.2.3/경로
-const SELF_TAG = /^https:\/\/(?:github\.com\/securidge\/securidge-kmttt\/(?:blob|tree)|raw\.githubusercontent\.com\/securidge\/securidge-kmttt)\/(v\d+\.\d+\.\d+)\/([^?#]+)/;
+const SELF_TAG = /^https:\/\/(?:github\.com\/securidge\/securidge-kmttt\/(?:blob|tree)|raw\.githubusercontent\.com\/securidge\/securidge-kmttt)\/(v\d+\.\d+\.\d+)\/([^?#]+)(?:#(.*))?/;
 
-// 태그 안에 그 파일이 있는지. 태그를 받아 오지 않은 체크아웃(CI 기본값)이면 지금 트리로 대신 본다.
-function existsAtTag(tag, p) {
+// 태그 안의 파일 내용(없으면 null). 태그를 받아 오지 않은 체크아웃이면 지금 트리로 대신 본다.
+const UNREAD = Symbol("dir-or-binary");
+function readAtTag(tag, p) {
   try {
     execFileSync("git", ["-C", root, "rev-parse", "--verify", "--quiet", `refs/tags/${tag}`], { stdio: "ignore" });
   } catch {
-    return fs.existsSync(path.join(root, p));
+    const f = path.join(root, p);
+    if (!fs.existsSync(f)) return null;
+    return p.endsWith(".md") ? fs.readFileSync(f, "utf8") : UNREAD;
   }
   try {
     execFileSync("git", ["-C", root, "cat-file", "-e", `${tag}:${p}`], { stdio: "ignore" });
-    return true;
   } catch {
-    return false;
+    return null;
   }
+  if (!p.endsWith(".md")) return UNREAD;
+  return execFileSync("git", ["-C", root, "show", `${tag}:${p}`], { encoding: "utf8", maxBuffer: 16 << 20 });
 }
 
 // GitHub 제목 앵커: 소문자, 글자·숫자·공백·하이픈·밑줄만 남기고 공백을 하이픈으로.
@@ -45,7 +49,12 @@ const cache = new Map();
 function parse(rel) {
   rel = rel.replace(/\\/g, "/");
   if (cache.has(rel)) return cache.get(rel);
-  const lines = fs.readFileSync(path.join(root, rel), "utf8").split(/\r?\n/);
+  const doc = parseText(fs.readFileSync(path.join(root, rel), "utf8"));
+  cache.set(rel, doc);
+  return doc;
+}
+function parseText(text) {
+  const lines = text.split(/\r?\n/);
   const heads = [];
   let fence = false;
   lines.forEach((l, i) => {
@@ -62,9 +71,7 @@ function parse(rel) {
     anchors.add(n ? `${s}-${n}` : s);
     seen.set(s, n + 1);
   }
-  const doc = { lines, heads, anchors };
-  cache.set(rel, doc);
-  return doc;
+  return { lines, heads, anchors };
 }
 
 const problems = [];
@@ -87,7 +94,11 @@ function checkTarget(rel, line, url, fromRoot) {
 function checkAbsolute(rel, line, url) {
   const tagged = SELF_TAG.exec(url.replace(/[.,;:]+$/, ""));
   if (tagged) {
-    if (!existsAtTag(tagged[1], decodeURIComponent(tagged[2]))) report(rel, line, `broken link ${url} (not in ${tagged[1]})`);
+    const [, tag, p, frag] = tagged;
+    const text = readAtTag(tag, decodeURIComponent(p));
+    if (text === null) report(rel, line, `broken link ${url} (not in ${tag})`);
+    else if (frag && typeof text === "string" && !parseText(text).anchors.has(decodeURIComponent(frag).toLowerCase()))
+      report(rel, line, `broken anchor ${url} (not in ${tag})`);
     return true;
   }
   const self = SELF.exec(url.replace(/[.,;:]+$/, ""));
