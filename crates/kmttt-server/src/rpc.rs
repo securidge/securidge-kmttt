@@ -831,16 +831,22 @@ fn windows_cmd_shim(launch: &str) -> String {
     if !cfg!(windows) {
         return launch.to_string();
     }
+    let Some(path) = std::env::var_os("PATH") else {
+        return launch.to_string();
+    };
+    cmd_shim_in_dirs(launch, std::env::split_paths(&path))
+}
+
+/// Keep PATH precedence; only prefer .exe over .cmd within the same directory.
+/// Explicit directories let tests cover selection without mutating process PATH.
+fn cmd_shim_in_dirs(launch: &str, dirs: impl IntoIterator<Item = std::path::PathBuf>) -> String {
     let mut parts = launch.splitn(2, ' ');
     let prog = parts.next().unwrap_or_default();
     let rest = parts.next();
     if prog.is_empty() || prog.contains(['\\', '/', '.']) {
         return launch.to_string();
     }
-    let Some(path) = std::env::var_os("PATH") else {
-        return launch.to_string();
-    };
-    for dir in std::env::split_paths(&path) {
+    for dir in dirs {
         if dir.join(format!("{prog}.exe")).is_file() {
             return launch.to_string();
         }
@@ -1216,4 +1222,97 @@ async fn hook_event(server: &Arc<Server>, conn: &Conn, p: &Value) -> Result<Valu
     server.push_snapshot(false);
     let allowed = !decision.ends_with("deny");
     Ok(json!({"decision": if allowed { "allow" } else { "deny" }, "reason": reason}))
+}
+
+#[cfg(test)]
+mod cmd_shim_tests {
+    use super::cmd_shim_in_dirs;
+    use std::path::Path;
+
+    fn touch(dir: &Path, names: &[&str]) {
+        for name in names {
+            std::fs::write(dir.join(name), "fixture; never executed").unwrap();
+        }
+    }
+
+    #[test]
+    fn cmd_is_selected_over_ps1_and_manifest_suffix_is_preserved() {
+        let d = tempfile::tempdir().unwrap();
+        touch(d.path(), &["codex.cmd", "codex.ps1"]);
+        for (launch, expected) in [
+            ("codex", "codex.cmd"),
+            ("codex --model  mini", "codex.cmd --model  mini"),
+            ("codex --help; echo done", "codex.cmd --help; echo done"),
+        ] {
+            assert_eq!(cmd_shim_in_dirs(launch, [d.path().into()]), expected);
+        }
+    }
+
+    #[test]
+    fn exe_wins_over_cmd_in_the_same_path_directory() {
+        let d = tempfile::tempdir().unwrap();
+        touch(d.path(), &["codex.exe", "codex.cmd", "codex.ps1"]);
+        assert_eq!(
+            cmd_shim_in_dirs("codex --help", [d.path().into()]),
+            "codex --help"
+        );
+    }
+
+    #[test]
+    fn earlier_path_cmd_wins_over_later_path_exe() {
+        let first = tempfile::tempdir().unwrap();
+        let later = tempfile::tempdir().unwrap();
+        touch(first.path(), &["codex.cmd"]);
+        touch(later.path(), &["codex.exe"]);
+        assert_eq!(
+            cmd_shim_in_dirs("codex", [first.path().into(), later.path().into()]),
+            "codex.cmd"
+        );
+        assert_eq!(
+            cmd_shim_in_dirs("codex", [later.path().into(), first.path().into()]),
+            "codex"
+        );
+    }
+
+    #[test]
+    fn ps1_only_missing_program_and_empty_path_leave_launch_unchanged() {
+        let d = tempfile::tempdir().unwrap();
+        touch(d.path(), &["codex.ps1"]);
+        for launch in ["codex --help", "missing --help", ""] {
+            assert_eq!(cmd_shim_in_dirs(launch, [d.path().into()]), launch);
+            assert_eq!(cmd_shim_in_dirs(launch, []), launch);
+        }
+        let later = tempfile::tempdir().unwrap();
+        touch(later.path(), &["codex.cmd"]);
+        assert_eq!(
+            cmd_shim_in_dirs("codex", [d.path().into(), later.path().into()]),
+            "codex.cmd"
+        );
+    }
+
+    #[test]
+    fn explicit_paths_extensions_quotes_and_shell_prefixes_are_unchanged() {
+        let d = tempfile::tempdir().unwrap();
+        touch(d.path(), &["codex.cmd"]);
+        for launch in [
+            r"C:\tools\codex --help",
+            r".\codex --help",
+            "/tools/codex --help",
+            "codex.exe --help",
+            "codex.cmd --help",
+            "codex.ps1 --help",
+            "& codex --help",
+            "\"codex\" --help",
+            "codex; echo done",
+            " codex --help",
+        ] {
+            assert_eq!(cmd_shim_in_dirs(launch, [d.path().into()]), launch);
+        }
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn non_windows_wrapper_leaves_launch_unchanged() {
+        assert_eq!(super::windows_cmd_shim("codex --help"), "codex --help");
+    }
 }
