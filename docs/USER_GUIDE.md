@@ -59,7 +59,7 @@ Double-click **KMttt Desktop**. The server starts by itself and a four-step setu
 | --- | --- | --- |
 | Top | Menu | File · Workspace · Panes · AI agents · Security · View · Settings · Help. Every feature is here. |
 | Below it | Toolbar | [Launch agent] [Workspace] [Tab] [Split left/right] [Split top/bottom] (icons), and on the right [Command palette] [? Guide] [⚙ Settings] |
-| Top banner | Alerts | What needs you now: approval requests, agents waiting for input, low remaining usage, a lost connection. For an approval request it shows the seconds left before automatic denial and [Allow] (Alt+Y) [Deny] (Alt+N) [Details]. |
+| Top banner | Alerts | What needs you now: approval requests, agents waiting for input, low remaining usage, a lost connection. For an approval request it shows the seconds left before automatic denial and [Allow once] (Alt+Y) [Deny] (Alt+N) [Details]. |
 | 💡 line | Do this now | A one-line hint for the current situation. ✕ hides it. |
 | Top left | Workspaces | Your projects. Click to switch; right-click to rename or close. |
 | Bottom left | AI usage | How much Claude and Codex usage is left and **when it resets**, with [Show current token usage] below ([section 7](#7-ai-usage-what-is-left-and-when-it-resets)). Collapse the sidebar with « or Ctrl+B. |
@@ -87,7 +87,7 @@ Press **[? Guide]** (F1) for getting started, how-tos, shortcuts, a glossary, an
 | New tab | [+] in the tab line | Ctrl+Shift+T |
 | Copy and paste | Drag to select → Ctrl+Shift+C / Ctrl+Shift+V (also Ctrl+V on Windows), or right-click | |
 | Instruct an agent | [✉ Send prompt] → agent → text → [Send] | Ctrl+Shift+I |
-| Answer an approval | [Allow] / [Allow for this session] / [Deny] on the approval banner ([Details] to read more) | Alt+Y / Alt+Shift+Y / Alt+N |
+| Answer an approval | [Allow once] / [Allow for this session] / [Deny] on the approval banner ([Details] to read more) | Alt+Y / Alt+Shift+Y / Alt+N |
 | See every agent | [Control center] tab | Ctrl+Shift+O |
 | Larger / smaller text | View menu | Ctrl+= / Ctrl+- |
 
@@ -130,7 +130,7 @@ When an agent in one pane tries to run a command in, type into, or read **anothe
 
 ![Approval request](images/desktop/approval.png)
 
-The card shows who asked (which pane in which workspace), what it wants to do (for example "Run a command in another pane", `pane.run`), the target pane, and the exact text (secrets masked). Press [Allow] or [Deny], or answer straight from the approval banner (Alt+Y allow, Alt+N deny). Unanswered requests are denied after the timeout (120 seconds by default, change it in Settings → Security policy); the banner and the card count down the seconds left. If KMttt is behind other windows, a Windows notification tells you, but you cannot approve from the notification: review the request in KMttt. Only a KMttt window that a person started can approve; a program started inside an agent's pane cannot.
+The card shows who asked (which pane in which workspace), what it wants to do (for example "Run a command in another pane", `pane.run`), the target pane, and the exact text (secrets masked). Press [Allow once] or [Deny], or answer straight from the approval banner (Alt+Y allow, Alt+N deny). Unanswered requests are denied after the timeout (120 seconds by default, change it in Settings → Security policy); the banner and the card count down the seconds left. If KMttt is behind other windows, a Windows notification tells you, but you cannot approve from the notification: review the request in KMttt. Only a KMttt window that a person started can approve; a program started inside an agent's pane cannot.
 
 ### Allow for this session
 
@@ -310,7 +310,7 @@ On macOS use ⌘ instead of Ctrl.
 - The app's screens load only files built into the app; it never runs scripts from the internet.
 - The app does not use the methods that type into or read other panes behind your back (`pane.run`, `pane.send`, `pane.read`); it sends only keys you type.
 - Links inside terminals show the full address and ask before opening, and only `http`/`https` are allowed.
-- **Choosing a isolation level**: in "No isolation", an agent running as the same Windows user that deliberately attacks KMttt (for example by clicking [Allow] through OS automation) is outside what KMttt contains; the log still records it. Run untrusted agents in `container` or `wsl`.
+- **Choosing a isolation level**: in "No isolation", an agent running as the same Windows user that deliberately attacks KMttt (for example by clicking [Allow once] through OS automation) is outside what KMttt contains; the log still records it. Run untrusted agents in `container` or `wsl`.
 
 Details: [Security review](SECURITY-REVIEW.md).
 
