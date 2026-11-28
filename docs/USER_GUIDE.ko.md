@@ -127,6 +127,8 @@ KMttt 보고 뒤에도 기존 알림을 계속 호출하려면 `kmttt integratio
 
 `kmttt integration uninstall codex`로 연동을 해제하면 보관한 알림을 복원합니다. 단, 설치된 KMttt `notify`를 직접 다른 값으로 바꿨다면 현재 설정과 보관한 알림은 그대로 둡니다.
 
+연동이 동작하지 않는 것 같으면 `kmttt integration status`를 실행하세요. 연동마다 사유 코드(`reason`)와 짧은 설명(`reason_text`)이 나옵니다. 예를 들어 `config_unreadable`은 설정 파일을 읽을 수 없음(권한 등), `config_invalid`는 설정 파일 내용이 잘못됨, `notify_other_program`은 Codex `notify`가 다른 프로그램을 가리킴, `chain_target_missing`은 `--chain`으로 연결한 프로그램을 찾을 수 없음을 뜻합니다. 정상이면 `ok`입니다. 사유 필드에는 경로·프로그램 이름·인자가 들어가지 않습니다.
+
 ## 6. 승인 요청에 답하기
 
 한 창의 에이전트가 **다른 창**에 명령을 넣거나, 글자를 입력하거나, 내용을 읽으려 하면 KMttt가 먼저 사람에게 묻습니다. 프롬프트 인젝션(에이전트가 읽은 글에 숨은 명령)에 속은 에이전트가 다른 작업을 건드리는 것을 막기 위해서입니다.

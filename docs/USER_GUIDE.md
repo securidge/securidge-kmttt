@@ -124,6 +124,8 @@ Chaining runs only the native executable whose path was resolved and registered 
 
 Run `kmttt integration uninstall codex` to remove the integration and restore the saved notifier. If you have replaced KMttt's installed `notify` yourself, removal leaves your current setting and the saved notifier unchanged.
 
+If an integration does not seem to work, run `kmttt integration status`. Each integration shows a reason code (`reason`) and a short explanation (`reason_text`): for example `config_unreadable` (the settings file cannot be read, such as a permissions problem), `config_invalid` (its contents are not valid), `notify_other_program` (Codex `notify` points at another program) or `chain_target_missing` (the program connected with `--chain` cannot be found). `ok` means it is working. The reason fields never include paths, program names or arguments.
+
 ## 6. Answering approval requests
 
 When an agent in one pane tries to run a command in, type into, or read **another pane**, KMttt asks a person first. This stops an agent that was tricked by a prompt injection from tampering with your other work.
