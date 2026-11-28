@@ -368,8 +368,22 @@ pub enum WorktreeCmd {
 #[derive(Subcommand, Debug)]
 pub enum ApprovalCmd {
     List,
-    Allow { id: u64 },
-    Deny { id: u64 },
+    Allow {
+        id: u64,
+        /// 같은 호출자·동작·대상은 창이 닫히거나 서버가 꺼질 때까지 묻지 않고 허용
+        #[arg(long = "for-session")]
+        for_session: bool,
+    },
+    Deny {
+        id: u64,
+    },
+    /// 이 세션 동안 허용한 목록
+    Grants,
+    /// 세션 동안 허용을 하나(--key) 또는 전부 해제
+    Revoke {
+        #[arg(long)]
+        key: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]

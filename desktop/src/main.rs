@@ -64,6 +64,8 @@ const ALLOWED: &[&str] = &[
     "agent.explain",
     "approval.list",
     "approval.decide",
+    "approval.grants",
+    "approval.revoke",
     "control.snapshot",
     "audit.status",
     "policy.show",
@@ -563,13 +565,103 @@ fn clipboard_write(app: AppHandle, text: String) -> Result<(), String> {
     app.clipboard().write_text(text).map_err(|e| e.to_string())
 }
 
+/// 창을 다시 보이고 앞으로 가져온다(트레이·두 번째 실행에서).
+fn show_main(app: &AppHandle) {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
+/// 창 닫기 버튼: 화면만 숨긴다(트레이에서 다시 열 수 있음). 에이전트와 서버는 계속 돈다.
+#[tauri::command]
+fn window_hide(app: AppHandle) {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.hide();
+    }
+}
+
+/// 프로그램 끝내기. 서버 종료는 화면이 먼저 server.stop으로 처리한다.
+#[tauri::command]
+fn app_quit(app: AppHandle) {
+    app.exit(0);
+}
+
+fn tray_labels() -> (&'static str, &'static str) {
+    let ko = prefs_get()
+        .get("lang")
+        .and_then(|v| v.as_str())
+        .map(|l| l == "ko")
+        .unwrap_or(true);
+    if ko {
+        ("KMttt 열기", "프로그램 끝내기")
+    } else {
+        ("Open KMttt", "Quit")
+    }
+}
+
+fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+    let (open_l, quit_l) = tray_labels();
+    let open = MenuItem::with_id(app, "open", open_l, true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", quit_l, true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let mut tb = TrayIconBuilder::with_id("main")
+        .tooltip("KMttt Desktop")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, ev| match ev.id().as_ref() {
+            "open" => show_main(app),
+            // 끝내기는 화면에서 확인(실행 중인 에이전트가 끝난다는 안내) 후 서버까지 멈춘다.
+            "quit" => {
+                show_main(app);
+                let _ = app.emit("app-quit-requested", ());
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, ev| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = ev
+            {
+                show_main(tray.app_handle());
+            }
+        });
+    if let Some(icon) = app.default_window_icon() {
+        tb = tb.icon(icon.clone());
+    }
+    tb.build(app)?;
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
+        // 이미 실행 중이면(트레이에 숨어 있어도) 새로 띄우지 않고 그 창을 보인다.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main(app)
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AppState::default())
+        .setup(|app| {
+            setup_tray(app)?;
+            Ok(())
+        })
+        // 창 닫기(X): 바로 닫지 않고 화면에서 "창만 닫기 / 프로그램 끝내기"를 묻는다.
+        .on_window_event(|w, ev| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = ev {
+                api.prevent_close();
+                let _ = w.emit("app-close-requested", ());
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             connect,
             disconnect,
@@ -591,7 +683,9 @@ fn main() {
             tokens_read,
             notify,
             usage_connect_claude,
-            usage_disconnect_claude
+            usage_disconnect_claude,
+            window_hide,
+            app_quit
         ])
         .run(tauri::generate_context!())
         .expect("error while running KMttt Desktop");

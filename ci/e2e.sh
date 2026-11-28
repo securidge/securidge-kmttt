@@ -59,6 +59,26 @@ wait_for 5 "[ \$(pending) -ge 1 ]"
 check "denied run exits 3" 'wait_for 5 "$K pane read $A --lines 5 | grep -q RC2=3"'
 check "denied text never reached target" '! "$K" pane read "$B" --lines 20 | grep -q "^E2E-DENIED"'
 
+echo "== F1 allow for this session"
+"$K" pane run "$A" "$K pane run $B 'echo E2E-SESSION-1'; echo RC3=\$?" >/dev/null
+wait_for 5 "[ \$(pending) -ge 1 ]"
+"$K" approval allow "$(first_id)" --for-session >/dev/null
+check "session-allowed run reaches target" 'wait_for 5 "$K pane read $B --lines 5 | grep -q E2E-SESSION-1"'
+check "session approval is listed" '"$K" approval grants | grep -q "pane.run"'
+"$K" pane run "$A" "$K pane run $B 'echo E2E-SESSION-2'; echo RC4=\$?" >/dev/null
+check "same caller, action and target runs without asking" 'wait_for 5 "$K pane read $B --lines 5 | grep -q E2E-SESSION-2"'
+check "nothing was queued for the repeat" '[ "$(pending)" = 0 ]'
+"$K" pane run "$B" "$K pane run $A 'echo E2E-OTHER-WAY'; echo RC5=\$?" >/dev/null
+check "the reverse direction still asks" 'wait_for 5 "[ \$(pending) -ge 1 ]"'
+"$K" approval deny "$(first_id)" >/dev/null
+"$K" pane run "$A" "( $K approval revoke > $T/selfrevoke.txt 2>&1 )" >/dev/null
+check "an agent cannot revoke or widen approvals" 'wait_for 5 "grep -qi \"denied\\|only a person\\|not allowed\" $T/selfrevoke.txt"'
+"$K" approval revoke >/dev/null
+check "revoked approvals are gone" '! "$K" approval grants | grep -q "pane.run"'
+"$K" pane run "$A" "$K pane run $B 'echo E2E-SESSION-3'; echo RC6=\$?" >/dev/null
+check "after revoke it asks again" 'wait_for 5 "[ \$(pending) -ge 1 ]"'
+"$K" approval deny "$(first_id)" >/dev/null
+
 echo "== F1 escape attempts (orphaned callers)"
 "$K" pane run "$A" "( $K pane run $B 'echo ESC1' >/dev/null 2>&1 & )" >/dev/null
 check "orphan ( cmd & ) is still treated as the pane" 'wait_for 5 "$K approval list | grep -q \"\\\"caller\\\": \\\"$A\\\"\""'

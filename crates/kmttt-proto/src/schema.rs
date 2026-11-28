@@ -136,8 +136,18 @@ pub const METHODS: &[(&str, &str, &str)] = &[
     ("approval.list", "Pending approvals", ""),
     (
         "approval.decide",
-        "Allow or deny a pending approval (users only)",
-        "id, allow",
+        "Allow or deny a pending approval (users only); session=true keeps allowing the same caller, action and target until a pane closes or the server stops",
+        "id, allow, session?",
+    ),
+    (
+        "approval.grants",
+        "Approvals allowed for this session",
+        "",
+    ),
+    (
+        "approval.revoke",
+        "Revoke one session approval, or all of them (users only)",
+        "key?",
     ),
     ("control.snapshot", "Everything the control view needs", ""),
     ("audit.status", "Ledger integrity status", ""),

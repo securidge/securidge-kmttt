@@ -430,6 +430,9 @@ impl Server {
                 }
             }
             st.out_acc.remove(id);
+            // 이 창이 주고받던 "세션 동안 허용"은 창과 함께 끝난다.
+            st.session_grants
+                .retain(|g| g.caller_pane != id && g.target != id);
             let (ws, tab) = (p.ws.clone(), p.tab.clone());
             if let Some(t) = st.tab_mut(&tab) {
                 match layout::remove(t.layout.clone(), id) {

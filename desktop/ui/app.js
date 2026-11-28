@@ -295,6 +295,13 @@
         decideApproval(e, S.approvals[0], combo === "Alt+Y");
         return;
       }
+      // Alt+Shift+Y: 이 세션 동안 허용(그럴 수 있는 요청만)
+      if (combo === "Alt+Shift+Y" && S.approvals.length && S.approvals[0].session_ok && S.modals === 0 && S.alertIsApproval) {
+        e.preventDefault();
+        e.stopPropagation();
+        decideApproval(e, S.approvals[0], true, true);
+        return;
+      }
       // Windows 터미널처럼: Ctrl+V 붙여넣기, 선택이 있을 때만 Ctrl+C 복사
       const inTerm = e.target && e.target.closest && e.target.closest(".pane");
       if (IS_WIN && inTerm && combo === "Ctrl+V") {
@@ -465,6 +472,60 @@
         break;
     }
   });
+  // ───────────── 창 닫기·끝내기 ─────────────
+  // X 버튼: 창만 닫기(트레이) / 프로그램 끝내기(서버와 에이전트까지 종료)를 묻는다.
+  const agentCount = () => (S.snap ? snap().panes.filter((p) => p.agent).length : 0);
+  async function quitApp() {
+    if (S.connected) {
+      S.everConnected = false; // 자동 재연결로 서버를 다시 띄우지 않는다
+      await rpc("server.stop").catch(() => {});
+    }
+    invoke("app_quit").catch(() => {});
+  }
+  let closing = false;
+  async function onCloseRequested() {
+    if (closing) return;
+    const pref = S.prefs.closeAction || "ask";
+    if (pref === "hide") return invoke("window_hide");
+    if (pref === "quit") return quitApp();
+    closing = true;
+    const remember = h("input", { type: "checkbox" });
+    const n = agentCount();
+    const body = h(
+      "div",
+      null,
+      h("p", { text: t("close.body") }),
+      h("ul", null, h("li", { text: t("close.hide.d") }), h("li", { text: n ? t("close.quit.d_agents", { n }) : t("close.quit.d") })),
+      h("label", { class: "chk" }, remember, " " + t("close.remember")),
+    );
+    const r = await modal({
+      title: t("close.title"),
+      body,
+      buttons: [
+        { label: t("dlg.cancel"), value: null },
+        { label: t("close.quit"), value: "quit", danger: true },
+        { label: t("close.hide"), value: "hide", primary: true },
+      ],
+    });
+    closing = false;
+    if (!r) return;
+    if (remember.checked) {
+      S.prefs.closeAction = r;
+      savePrefs();
+      showToast(t("close.remembered"), "ok");
+    }
+    if (r === "hide") invoke("window_hide");
+    else quitApp();
+  }
+  // 트레이의 [프로그램 끝내기]: 실행 중인 에이전트가 있으면 한 번 확인한다.
+  async function onQuitRequested() {
+    const n = agentCount();
+    if (n && !(await confirmDlg(t("close.quit"), t("close.quit.d_agents", { n }), t("close.quit"), true))) return;
+    quitApp();
+  }
+  listen("app-close-requested", () => onCloseRequested());
+  listen("app-quit-requested", () => onQuitRequested());
+
   listen("kmttt-disconnected", (ev) => {
     if (!ev.payload || ev.payload.gen !== S.gen) return;
     S.connected = false;
@@ -482,6 +543,7 @@
     if (!S.connected) return;
     try {
       S.approvals = (await rpc("approval.list")) || [];
+      S.grants = (await rpc("approval.grants").catch(() => [])) || [];
       notifyApprovals();
     } catch (_) {
       /* 연결 끊김은 disconnected 이벤트가 처리 */
@@ -1339,15 +1401,21 @@
     return out;
   }
 
-  async function decideApproval(ev, a, allow) {
+  async function decideApproval(ev, a, allow, session) {
     if (!ev.isTrusted) {
       showError(t("ap.untrusted"));
       return;
     }
     if (ev.currentTarget && ev.currentTarget.disabled !== undefined) ev.currentTarget.disabled = true;
-    const r = await tryRpc("approval.decide", { id: a.id, allow });
-    if (r) showToast(t("ap.decided"), "ok");
+    const r = await tryRpc("approval.decide", { id: a.id, allow, session: !!session });
+    if (r) showToast(session ? t("ap.session_done") : t("ap.decided"), "ok");
     pollNow();
+  }
+  async function revokeGrants(ev, key) {
+    if (!ev.isTrusted) return;
+    const r = await tryRpc("approval.revoke", key ? { key } : {});
+    if (r) showToast(t("ap.revoked", { n: r.revoked }), "ok");
+    pollNow().then(() => renderApprovals());
   }
   const oneLine = (x, n) => {
     const s1 = String(x || "").replace(/\s+/g, " ").trim();
@@ -1415,6 +1483,7 @@
         band.append(
           h("b", { class: "band-cd", "data-exp": a.expires_ms, text: "⏱ " + t("alert.approval_left", { s: left }) }),
           h("button", { class: "btn small primary", type: "button", title: t("alert.allow_key"), onclick: (ev) => decideApproval(ev, a, true) }, t("ap.allow"), h("kbd", { text: "Alt+Y" })),
+          a.session_ok ? h("button", { class: "btn small", type: "button", title: t("ap.session.h"), onclick: (ev) => decideApproval(ev, a, true, true) }, t("ap.session"), h("kbd", { text: "Alt+Shift+Y" })) : null,
           h("button", { class: "btn small", type: "button", title: t("alert.deny_key"), onclick: (ev) => decideApproval(ev, a, false) }, t("ap.deny"), h("kbd", { text: "Alt+N" })),
           h("button", { class: "btn small ghost", type: "button", onclick: () => setView("approvals") }, t("alert.details")),
         );
@@ -1972,6 +2041,23 @@
 
   function renderApprovals() {
     const v = clear($("#view-approvals"));
+    const grants = S.grants || [];
+    if (grants.length) {
+      const list = h("div", { class: "card grants" }, h("div", { class: "row" }, h("b", { text: t("ap.grants.t", { n: grants.length }) }), h("span", { class: "grow" }), h("button", { class: "btn small", type: "button", onclick: (ev) => revokeGrants(ev) }, t("ap.revoke_all"))), h("p", { class: "muted", text: t("ap.grants.b") }));
+      for (const g of grants) {
+        list.append(
+          h(
+            "div",
+            { class: "row grant" },
+            h("span", { text: describePane(g.caller) + " → " + actionName(g.action) + " → " + describePane(g.target) }),
+            h("span", { class: "grow" }),
+            h("span", { class: "muted", text: fmtTime(g.ts_ms) }),
+            h("button", { class: "btn small ghost", type: "button", onclick: (ev) => revokeGrants(ev, g.key) }, t("ap.revoke")),
+          ),
+        );
+      }
+      v.append(list);
+    }
     if (!S.approvals.length) {
       v.append(h("p", { class: "empty", text: t("empty.approvals") }));
       return;
@@ -2001,6 +2087,7 @@
             h("span", { class: "muted", "data-exp": a.expires_ms, text: t("ap.expires", { s: left }) }),
             h("span", { class: "grow" }),
             h("button", { class: "btn danger", type: "button", onclick: (ev) => decide(ev, false) }, t("ap.deny")),
+            a.session_ok ? h("button", { class: "btn", type: "button", title: t("ap.session.h"), onclick: (ev) => decideApproval(ev, a, true, true) }, t("ap.session")) : null,
             h("button", { class: "btn primary", type: "button", onclick: (ev) => decide(ev, true) }, t("ap.allow")),
           ),
         ),
@@ -2691,6 +2778,7 @@
       ),
       field(t("set.theme"), sel([["dark", t("set.theme.dark")], ["light", t("set.theme.light")]], S.prefs.theme || "dark", (v) => (prefChanges.theme = v))),
       field(t("set.font_size"), num(fontSize(), (v) => (prefChanges.fontSize = v), 9, 28)),
+      field(t("set.close_action"), sel([["ask", t("set.close_action.ask")], ["hide", t("set.close_action.hide")], ["quit", t("set.close_action.quit")]], S.prefs.closeAction || "ask", (v) => (prefChanges.closeAction = v))),
       field(t("set.shell"), txt(cfg.shell.program, (v) => set("config", ["shell", "program"], v), IS_WIN ? "pwsh.exe" : "/bin/zsh"), t("set.shell.help")),
       chk(cfg.ui.mask_screen, t("set.mask_screen"), (v) => {
         set("config", ["ui", "mask_screen"], v);
@@ -2924,6 +3012,10 @@
     if (!result) return;
     // 앱 전용 설정
     if (prefChanges.theme) setTheme(prefChanges.theme);
+    if (prefChanges.closeAction) {
+      S.prefs.closeAction = prefChanges.closeAction;
+      savePrefs();
+    }
     if (prefChanges.fontSize && prefChanges.fontSize !== fontSize()) {
       S.prefs.fontSize = prefChanges.fontSize;
       savePrefs();

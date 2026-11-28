@@ -205,13 +205,39 @@ impl Server {
         let mut decision = verdict.decision;
         let mut how = decision.as_str().to_string();
 
+        // 창 사이 동작(지시·입력·실행·읽기·생성)만 "이 세션 동안 허용" 대상이다.
+        let grant_key = match caller {
+            Caller::Pane { pane, .. }
+                if matches!(
+                    class,
+                    ActionClass::Control | ActionClass::Read | ActionClass::Create
+                ) && !tlabel.is_empty() =>
+            {
+                Some(crate::state::grant_key(&label, pane, action, &tlabel))
+            }
+            _ => None,
+        };
+        if decision == Decision::Ask {
+            let granted = grant_key.as_ref().is_some_and(|k| {
+                self.st
+                    .lock()
+                    .map(|st| st.session_grants.iter().any(|g| &g.key == k))
+                    .unwrap_or(false)
+            });
+            if granted {
+                decision = Decision::Allow;
+                how = "session→allow".into();
+            }
+        }
         if decision == Decision::Ask {
             let timeout = self
                 .policy
                 .lock()
                 .map(|p| p.cfg.defaults.ask_timeout_secs)
                 .unwrap_or(120);
-            let allowed = self.ask(&label, action, &tlabel, detail, timeout).await;
+            let allowed = self
+                .ask(&label, action, &tlabel, detail, timeout, grant_key.clone())
+                .await;
             decision = if allowed {
                 Decision::Allow
             } else {
@@ -288,6 +314,7 @@ impl Server {
         target: &str,
         detail: &str,
         timeout_secs: u64,
+        grant_key: Option<String>,
     ) -> bool {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let info = {
@@ -303,10 +330,12 @@ impl Server {
                 action: action.into(),
                 target: target.into(),
                 detail: self.redact(detail).chars().take(500).collect(),
+                session_ok: grant_key.is_some(),
             };
             st.approvals.push(crate::state::PendingApproval {
                 info: info.clone(),
                 tx: Some(tx),
+                grant_key,
             });
             info
         };
@@ -343,9 +372,10 @@ impl Server {
         self: &Arc<Self>,
         id: u64,
         allow: bool,
+        session: bool,
         decided_by: serde_json::Value,
     ) -> Result<(), RpcError> {
-        let info = {
+        let (info, grant) = {
             let mut st = self.st.lock().map_err(|_| RpcError::internal("lock"))?;
             let a = st
                 .approvals
@@ -355,14 +385,81 @@ impl Server {
             if let Some(tx) = a.tx.take() {
                 let _ = tx.send(allow);
             }
-            a.info.clone()
+            let info = a.info.clone();
+            let key = a.grant_key.clone();
+            let grant = match key {
+                Some(k) if allow && session => {
+                    let caller_pane = info.caller.split('(').next().unwrap_or("").to_string();
+                    if !st.session_grants.iter().any(|g| g.key == k) {
+                        st.session_grants.push(crate::state::SessionGrant {
+                            key: k.clone(),
+                            ts_ms: now_ms(),
+                            caller: info.caller.clone(),
+                            caller_pane,
+                            action: info.action.clone(),
+                            target: info.target.clone(),
+                        });
+                    }
+                    // 같은 묶음으로 이미 기다리는 요청도 함께 허용한다.
+                    for o in st.approvals.iter_mut() {
+                        if o.grant_key.as_deref() == Some(k.as_str()) {
+                            if let Some(tx) = o.tx.take() {
+                                let _ = tx.send(true);
+                            }
+                        }
+                    }
+                    true
+                }
+                _ if session && allow => {
+                    return Err(RpcError::invalid_params(
+                        "this request cannot be allowed for the session",
+                    ))
+                }
+                _ => false,
+            };
+            (info, grant)
         };
         self.emit(
             "approval.decided",
             "user",
-            json!({"id": id, "allow": allow, "approval": info, "decided_by": decided_by}),
+            json!({"id": id, "allow": allow, "session": grant, "approval": info, "decided_by": decided_by}),
         );
+        if grant {
+            self.security_event(
+                Severity::Info,
+                "approval.session_grant",
+                "user",
+                &info.target,
+                &format!(
+                    "{} may {} {} without asking until a pane closes or the server stops",
+                    info.caller, info.action, info.target
+                ),
+            );
+            self.push_snapshot(true);
+        }
         Ok(())
+    }
+
+    /// 세션 동안 허용 목록에서 하나(key) 또는 전부를 뺀다.
+    pub fn revoke_grants(self: &Arc<Self>, key: Option<&str>) -> usize {
+        let removed = {
+            let Ok(mut st) = self.st.lock() else { return 0 };
+            let before = st.session_grants.len();
+            st.session_grants
+                .retain(|g| key.is_some_and(|k| g.key != k));
+            before - st.session_grants.len()
+        };
+        if removed > 0 {
+            self.security_event(
+                Severity::Info,
+                "approval.session_revoke",
+                "user",
+                "",
+                &format!("{removed} session approval(s) revoked"),
+            );
+            self.push_snapshot(true);
+        }
+        removed
     }
 
     pub fn control_snapshot(&self) -> ControlSnapshot {

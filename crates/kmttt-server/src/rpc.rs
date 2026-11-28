@@ -780,8 +780,16 @@ pub async fn call(
                 .and_then(|v| v.as_u64())
                 .ok_or_else(|| RpcError::invalid_params("missing id"))?;
             let by = server.caller_lineage(conn.pid);
-            server.decide(id, b(p, "allow", false), by)?;
+            server.decide(id, b(p, "allow", false), b(p, "session", false), by)?;
             Ok(json!({"ok": true}))
+        }
+        "approval.grants" => {
+            let st = server.st.lock().map_err(|_| RpcError::internal("lock"))?;
+            Ok(to_json(&st.session_grants))
+        }
+        "approval.revoke" => {
+            let n = server.revoke_grants(s(p, "key").as_deref());
+            Ok(json!({"revoked": n}))
         }
         "control.snapshot" => Ok(to_json(&server.control_snapshot())),
         "audit.status" => {
@@ -1125,6 +1133,7 @@ async fn hook_event(server: &Arc<Server>, conn: &Conn, p: &Value) -> Result<Valu
                             &pane,
                             &format!("{summary}  — {}", v.reason),
                             timeout,
+                            None,
                         )
                         .await
                     {

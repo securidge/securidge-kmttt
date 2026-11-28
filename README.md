@@ -61,7 +61,7 @@ If you would rather click than learn key bindings, use **KMttt Desktop**. It is 
 | Open a project | [+ New workspace] → pick a folder → pick a isolation level |
 | Launch an agent | [Launch agent] → pick Claude Code, Codex, … |
 | Split and resize | [Split left/right] / [Split top/bottom], drag the line between panes |
-| Answer an approval | [View] on the yellow banner → [Allow] / [Deny] |
+| Answer an approval | [View] on the approval banner → [Allow] / [Deny] |
 | See every agent | [Control center] tab |
 | Change the security policy or isolation | [⚙ Settings] → [Security policy] / [Isolation] → [Save] (changes that weaken security ask again) |
 | Copy and paste | Drag to select → `Ctrl+Shift+C` / `Ctrl+Shift+V` (also `Ctrl+V` on Windows), or right-click |

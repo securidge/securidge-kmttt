@@ -225,6 +225,9 @@ pub struct Approval {
     pub target: String,
     /// 무엇을 하려는지 사람이 읽을 수 있는 설명(마스킹 적용)
     pub detail: String,
+    /// "이 세션 동안 허용"을 고를 수 있는 요청인가(창 사이 동작만, 도구 호출은 아님)
+    #[serde(default)]
+    pub session_ok: bool,
 }
 
 /// 에이전트 간 메시지 흐름 한 건.

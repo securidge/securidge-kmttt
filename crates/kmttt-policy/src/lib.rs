@@ -113,6 +113,7 @@ pub fn classify_action(action: &str) -> ActionClass {
         "pane.split" | "tab.create" | "workspace.create" | "worktree.create" => ActionClass::Create,
         "hook.event" => ActionClass::Hook,
         "approval.decide"
+        | "approval.revoke"
         | "server.stop"
         | "server.reload_config"
         | "policy.reload"

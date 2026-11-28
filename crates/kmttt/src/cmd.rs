@@ -280,11 +280,20 @@ async fn dispatch(a: Cli) -> Result<i32> {
         Cmd::Approval(ap) => {
             let v = match ap {
                 ApprovalCmd::List => call(&s, "approval.list", json!({})).await?,
-                ApprovalCmd::Allow { id } => {
-                    call(&s, "approval.decide", json!({"id": id, "allow": true})).await?
+                ApprovalCmd::Allow { id, for_session } => {
+                    call(
+                        &s,
+                        "approval.decide",
+                        json!({"id": id, "allow": true, "session": for_session}),
+                    )
+                    .await?
                 }
                 ApprovalCmd::Deny { id } => {
                     call(&s, "approval.decide", json!({"id": id, "allow": false})).await?
+                }
+                ApprovalCmd::Grants => call(&s, "approval.grants", json!({})).await?,
+                ApprovalCmd::Revoke { key } => {
+                    call(&s, "approval.revoke", json!({"key": key})).await?
                 }
             };
             print(&v);

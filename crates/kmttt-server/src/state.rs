@@ -79,6 +79,24 @@ pub struct ClientRt {
 pub struct PendingApproval {
     pub info: Approval,
     pub tx: Option<oneshot::Sender<bool>>,
+    /// "이 세션 동안 허용"이 가능한 요청이면 그 묶음 키(호출자·동작·대상)
+    pub grant_key: Option<String>,
+}
+
+/// "이 세션 동안 허용" 묶음 키: 호출자(창·에이전트 이름)·동작·대상이 모두 같아야 같은 묶음이다.
+pub fn grant_key(caller_label: &str, caller_pane: &str, action: &str, target: &str) -> String {
+    format!("{caller_label}\u{1f}{caller_pane}\u{1f}{action}\u{1f}{target}")
+}
+
+/// 사람이 "이 세션 동안 허용"한 묶음. 서버가 꺼지거나 관련 창이 닫히면 사라진다.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SessionGrant {
+    pub key: String,
+    pub ts_ms: i64,
+    pub caller: String,
+    pub caller_pane: String,
+    pub action: String,
+    pub target: String,
 }
 
 #[derive(Default)]
@@ -95,6 +113,7 @@ pub struct State {
     pub header_rows: u16,
     pub approvals: Vec<PendingApproval>,
     pub next_approval: u64,
+    pub session_grants: Vec<SessionGrant>,
     pub events: VecDeque<SecurityEvent>,
     pub next_event: u64,
     pub flows: VecDeque<Flow>,

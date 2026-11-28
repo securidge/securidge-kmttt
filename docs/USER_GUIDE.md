@@ -47,7 +47,7 @@ Double-click **KMttt Desktop**. The server starts by itself and a four-step setu
 ![First-run setup](images/desktop/wizard.png)
 
 1. **Language** — Korean or English. The notice at the top says this is a non-commercial personal project.
-2. **Isolation level** — how much of this computer an agent can reach. The table shows what each level actually blocks on this computer (see [Isolation levels](#protection-levels)).
+2. **Isolation level** — how much of this computer an agent can reach. The table shows what each level actually blocks on this computer (see [Isolation levels](#isolation-levels)).
 3. **Project folder** — the first terminal pane opens there.
 4. **First AI agent** — pick an installed agent to start it now, or Skip.
 
@@ -59,7 +59,7 @@ Double-click **KMttt Desktop**. The server starts by itself and a four-step setu
 | --- | --- | --- |
 | Top | Menu | File · Workspace · Panes · AI agents · Security · View · Settings · Help. Every feature is here. |
 | Below it | Toolbar | [Launch agent] [Workspace] [Tab] [Split left/right] [Split top/bottom] (icons), and on the right [Command palette] [? Guide] [⚙ Settings] |
-| Yellow banner | Alerts | What needs you now: approval requests, agents waiting for input, low remaining usage, a lost connection. For an approval request it shows the seconds left before automatic denial and [Allow] (Alt+Y) [Deny] (Alt+N) [Details]. |
+| Top banner | Alerts | What needs you now: approval requests, agents waiting for input, low remaining usage, a lost connection. For an approval request it shows the seconds left before automatic denial and [Allow] (Alt+Y) [Deny] (Alt+N) [Details]. |
 | 💡 line | Do this now | A one-line hint for the current situation. ✕ hides it. |
 | Top left | Workspaces | Your projects. Click to switch; right-click to rename or close. |
 | Bottom left | AI usage | How much Claude and Codex usage is left and **when it resets**, with [Show current token usage] below ([section 7](#7-ai-usage-what-is-left-and-when-it-resets)). Collapse the sidebar with « or Ctrl+B. |
@@ -87,7 +87,7 @@ Press **[? Guide]** (F1) for getting started, how-tos, shortcuts, a glossary, an
 | New tab | [+] in the tab line | Ctrl+Shift+T |
 | Copy and paste | Drag to select → Ctrl+Shift+C / Ctrl+Shift+V (also Ctrl+V on Windows), or right-click | |
 | Instruct an agent | [✉ Send prompt] → agent → text → [Send] | Ctrl+Shift+I |
-| Answer an approval | [Allow] / [Deny] on the yellow banner ([Details] to read more) | Alt+Y / Alt+N |
+| Answer an approval | [Allow] / [Allow for this session] / [Deny] on the approval banner ([Details] to read more) | Alt+Y / Alt+Shift+Y / Alt+N |
 | See every agent | [Control center] tab | Ctrl+Shift+O |
 | Larger / smaller text | View menu | Ctrl+= / Ctrl+- |
 
@@ -114,7 +114,17 @@ When an agent in one pane tries to run a command in, type into, or read **anothe
 
 ![Approval request](images/desktop/approval.png)
 
-The card shows who asked (which pane in which workspace), what it wants to do (for example "Run a command in another pane", `pane.run`), the target pane, and the exact text (secrets masked). Press [Allow] or [Deny], or answer straight from the yellow banner (Alt+Y allow, Alt+N deny). Unanswered requests are denied after the timeout (120 seconds by default, change it in Settings → Security policy); the banner and the card count down the seconds left. If KMttt is behind other windows, a Windows notification tells you, but you cannot approve from the notification: review the request in KMttt. Only a KMttt window that a person started can approve; a program started inside an agent's pane cannot.
+The card shows who asked (which pane in which workspace), what it wants to do (for example "Run a command in another pane", `pane.run`), the target pane, and the exact text (secrets masked). Press [Allow] or [Deny], or answer straight from the approval banner (Alt+Y allow, Alt+N deny). Unanswered requests are denied after the timeout (120 seconds by default, change it in Settings → Security policy); the banner and the card count down the seconds left. If KMttt is behind other windows, a Windows notification tells you, but you cannot approve from the notification: review the request in KMttt. Only a KMttt window that a person started can approve; a program started inside an agent's pane cannot.
+
+### Allow for this session
+
+When agents talk to each other, the same request keeps coming back. Press [Allow for this session] (Alt+Shift+Y) and **the same agent asking the same pane for the same action** is no longer asked about.
+
+- A different direction, target or action asks again.
+- Dangerous tool calls blocked by hooks cannot be allowed this way.
+- It ends automatically when a related pane closes or the program (server) quits.
+- Active session approvals are listed at the top of the Approvals tab; [Revoke] or [Revoke all] undoes them any time.
+- If the target agent runs commands without its own approvals (for example Codex in YOLO mode), a session approval effectively hands that pane over.
 
 ## 7. AI usage: what is left and when it resets
 
@@ -165,7 +175,7 @@ What is counted: **new input plus output tokens** (input re-read from cache is n
 - **Codex**: Codex does not record which pane it runs in, so KMttt pairs each Codex pane with the latest Codex log from the same folder (marked `*`). With several Codex panes in one folder the pairing can swap.
 - Remaining usage (%) is per account, so panes of the same kind share it.
 
-When less than 15% is left the bar turns red and the yellow banner tells you once ([Dismiss] hides it until the next reset).
+When less than 15% is left the bar turns red and the approval banner tells you once ([Dismiss] hides it until the next reset).
 
 ### Codex
 
@@ -211,6 +221,16 @@ At the top of the audit log you can filter by severity (info, warning, critical)
 | WSL (wsl) | Runs inside WSL Linux | — | — |
 
 On Windows, use `wsl` or `container` to really contain an agent (they need WSL or Docker/Podman).
+
+### Closing the window and the tray
+
+The window's X button asks whether to [Close window] or [Quit].
+
+- **Close window** hides the window. Agents keep running; click the KMttt icon in the notification area (tray) to bring it back.
+- **Quit** stops the KMttt server too, which ends every running agent.
+- Right-click the tray icon for [Open KMttt] and [Quit].
+- Check [Remember my choice] or set it in Settings → General → Close button (X) to stop the question.
+- Starting KMttt again while it sits in the tray brings back the existing window instead of opening a second one.
 
 ## 10. Keyboard shortcuts
 
