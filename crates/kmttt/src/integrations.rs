@@ -303,7 +303,11 @@ pub fn installed(agent: &str) -> Result<bool> {
         return Ok(statusline_is_ours(&v));
     }
     if agent == "codex" {
-        return Ok(parse_codex_notify(&text)?.is_some_and(|n| codex_notify_is_ours(&n.argv)));
+        // A broken Codex config must not hide other integrations or abort sync.
+        return Ok(parse_codex_notify(&text)
+            .ok()
+            .flatten()
+            .is_some_and(|n| codex_notify_is_ours(&n.argv)));
     }
     Ok(text.contains(&format!("hook {agent}")) && text.contains("kmttt"))
 }
@@ -410,6 +414,21 @@ fn codex_notify_is_ours(argv: &[String]) -> bool {
     argv[0] == exe() || name.eq_ignore_ascii_case("kmttt") || name.eq_ignore_ascii_case("kmttt.exe")
 }
 
+/// Recovery for malformed documents: recognize complete, owned single-line
+/// notify assignments, rather than trusting a substring in an arbitrary command.
+fn codex_notify_lines(text: &str) -> Vec<CodexNotify> {
+    let mut offset = 0;
+    let mut out = Vec::new();
+    for line in text.split_inclusive('\n') {
+        if let Ok(Some(mut n)) = parse_codex_notify(line) {
+            n.span = n.span.start + offset..n.span.end + offset;
+            out.push(n);
+        }
+        offset += line.len();
+    }
+    out
+}
+
 fn codex_previous_file(f: &std::path::Path) -> PathBuf {
     f.with_file_name(format!(
         "{}.kmttt-notify-previous.json",
@@ -455,7 +474,29 @@ fn install_codex(replace: bool) -> Result<String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(e.into()),
     };
-    let notify = parse_codex_notify(&text)?;
+    let notify = match parse_codex_notify(&text) {
+        Ok(n) => n,
+        Err(e) if replace => return Err(e),
+        Err(_) => {
+            let own = codex_notify_lines(&text)
+                .into_iter()
+                .find(|n| codex_notify_is_ours(&n.argv));
+            if own.is_none()
+                && text.lines().any(|l| {
+                    let l = l.trim_start();
+                    l.starts_with("notify")
+                        || l.starts_with("\"notify\"")
+                        || l.starts_with("'notify'")
+                })
+            {
+                bail!(
+                    "{} already has its own `notify` setting; use --replace with valid TOML",
+                    f.display()
+                );
+            }
+            own
+        }
+    };
     let paused;
     if let Some(n) = notify.as_ref().filter(|n| codex_notify_is_ours(&n.argv)) {
         // Legacy installations have no sidecar. Reinstalling must not replace
@@ -490,7 +531,9 @@ fn install_codex(replace: bool) -> Result<String> {
             }
         }
         // Check the edited document before creating a backup or changing config.
-        parse_codex_notify(&updated)?;
+        if replace {
+            parse_codex_notify(&updated)?;
+        }
         if let Some(dir) = f.parent() {
             std::fs::create_dir_all(dir)?;
         }
@@ -525,19 +568,36 @@ fn install_codex(replace: bool) -> Result<String> {
 }
 
 fn uninstall_codex(f: &std::path::Path, text: &str, only_this_exe: bool) -> Result<String> {
-    let Some(n) = parse_codex_notify(text)?.filter(|n| {
-        codex_notify_is_ours(&n.argv) && (!only_this_exe || mentions_this_exe(&n.argv[0]))
-    }) else {
+    let candidates = match parse_codex_notify(text) {
+        Ok(n) => n.into_iter().collect(),
+        Err(_) => codex_notify_lines(text),
+    };
+    let candidates: Vec<_> = candidates
+        .into_iter()
+        .filter(|n| {
+            codex_notify_is_ours(&n.argv) && (!only_this_exe || mentions_this_exe(&n.argv[0]))
+        })
+        .collect();
+    let Some(first) = candidates.first() else {
+        uninstall_skill("codex", only_this_exe)?;
         return Ok(
             "no matching KMttt notify; current config and any saved previous notify left unchanged"
                 .into(),
         );
     };
-    let record = read_codex_previous(f, &n.argv)?;
+    let record = read_codex_previous(f, &first.argv)?;
     let mut updated = text.to_string();
-    if let Some(raw) = record.as_ref().and_then(|r| r["previous_notify"].as_str()) {
-        updated.replace_range(n.span, raw);
-    } else {
+    // Work backwards so original byte offsets stay valid. Restore the original
+    // once, and remove any duplicate owned lines from an invalid document.
+    for (i, n) in candidates.iter().enumerate().rev() {
+        if let Some(raw) = record
+            .as_ref()
+            .and_then(|r| r["previous_notify"].as_str())
+            .filter(|_| i == 0)
+        {
+            updated.replace_range(n.span.clone(), raw);
+            continue;
+        }
         let start = text[..n.span.start]
             .rfind('\n')
             .map(|i| i + 1)
@@ -554,7 +614,6 @@ fn uninstall_codex(f: &std::path::Path, text: &str, only_this_exe: bool) -> Resu
             .unwrap_or(text.len());
         updated.replace_range(start..end, "");
     }
-    parse_codex_notify(&updated)?;
     std::fs::write(f, updated)?;
     // Delete recovery data only after the config has been restored successfully.
     if record.is_some() {
@@ -886,6 +945,70 @@ mod tests {
             assert!(installed("codex").unwrap());
             uninstall("codex").unwrap();
             assert_eq!(std::fs::read_to_string(&f).unwrap(), original);
+        }
+    }
+
+    #[test]
+    fn codex_status_and_sync_keep_working_with_invalid_config() {
+        for invalid in [
+            "notify = [",
+            "notify = 'wrong type'",
+            "notify = []\nnotify = []\n",
+        ] {
+            let d = tempfile::tempdir().unwrap();
+            let _env = TestEnv::new(d.path());
+            install("claude").unwrap();
+            let claude_skill = skill_dir("claude").unwrap().join("SKILL.md");
+            std::fs::write(&claude_skill, "old skill").unwrap();
+            std::fs::write(codex_config(), invalid).unwrap();
+            assert!(!installed("codex").unwrap());
+            run(IntegrationCmd::Status { agent: None }).unwrap();
+            sync_skills().unwrap();
+            assert_eq!(std::fs::read_to_string(claude_skill).unwrap(), SKILL_MD);
+            assert_eq!(std::fs::read_to_string(codex_config()).unwrap(), invalid);
+        }
+    }
+
+    #[test]
+    fn codex_plain_install_stays_permissive_but_replace_requires_valid_toml() {
+        let d = tempfile::tempdir().unwrap();
+        let _env = TestEnv::new(d.path());
+        let f = codex_config();
+        let original = "broken = [\n";
+        std::fs::write(&f, original).unwrap();
+        assert!(install_with("codex", true).is_err());
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), original);
+        install("codex").unwrap();
+        install("codex").unwrap();
+        uninstall("codex").unwrap();
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), original);
+    }
+
+    #[test]
+    fn codex_uninstall_cleans_owned_notify_and_skill_with_invalid_config() {
+        for original in ["", "notify = ['original']\n"] {
+            for damage in [
+                "\nnotify = ['duplicate']\n",
+                "\nbroken = [\n",
+                "\nnotify = 'user-string'\n",
+            ] {
+                for only_this_exe in [false, true] {
+                    let d = tempfile::tempdir().unwrap();
+                    let _env = TestEnv::new(d.path());
+                    let f = codex_config();
+                    std::fs::write(&f, original).unwrap();
+                    install_with("codex", true).unwrap();
+                    let current = std::fs::read_to_string(&f).unwrap();
+                    std::fs::write(&f, current + damage).unwrap();
+                    uninstall_with("codex", only_this_exe).unwrap();
+                    assert_eq!(
+                        std::fs::read_to_string(&f).unwrap(),
+                        original.to_string() + damage
+                    );
+                    assert!(!skill_dir("codex").unwrap().exists());
+                    assert!(!codex_previous_file(&f).exists());
+                }
+            }
         }
     }
 
