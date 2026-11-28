@@ -2,6 +2,7 @@
 
 ## 1.3.4 — 미출시 / Unreleased
 
+- KMttt X 버튼의 [창 닫기]를 [트레이로 숨기기]로 바꿔, 터미널 창을 닫는 [창 닫기]와 헷갈리지 않게 했습니다. 동작은 같습니다 / The KMttt window's "Close window" choice is now "Hide to tray", so it is not confused with closing a pane; behavior is unchanged
 - 승인 버튼 [허용]을 [이번만 허용]으로 바꾸고, 승인 상세 창에 [이 세션 동안 허용]이 무엇을 언제까지 허용하는지, 또는 왜 쓸 수 없는지 한 줄로 보여 줍니다 / The approval button now reads "Allow once", and the approval details say exactly what "Allow for this session" covers and until when, or why it is unavailable
 - 탭을 닫을 때도 확인 창을 띄웁니다. Windows에서는 서버 종료와 프로그램 끝내기 확인 문구에도, 창에서 시작한 프로그램과 처음 연 앱이 함께 닫힌다고 안내합니다 / Closing a tab now asks for confirmation, and on Windows the stop-server and quit confirmations also say that programs started from panes, including apps first opened from them, close too
 - Windows에서 창이나 워크스페이스를 닫을 때, 그 창에서 시작한 프로그램과 처음 연 앱(VS Code, 로그인 브라우저 등)도 함께 닫힌다고 확인 창에 안내합니다 / On Windows, the close confirmation for a pane or workspace now says that programs started from it, including apps first opened from it, close too

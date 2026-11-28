@@ -473,7 +473,7 @@
     }
   });
   // ───────────── 창 닫기·끝내기 ─────────────
-  // X 버튼: 창만 닫기(트레이) / 프로그램 끝내기(서버와 에이전트까지 종료)를 묻는다.
+  // X 버튼: 트레이로 숨기기 / 프로그램 끝내기(서버와 에이전트까지 종료)를 묻는다.
   const agentCount = () => (S.snap ? snap().panes.filter((p) => p.agent).length : 0);
   async function quitApp() {
     if (S.connected) {
