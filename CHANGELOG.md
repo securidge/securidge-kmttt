@@ -1,16 +1,18 @@
 # Changelog
 
-## 1.3.4 — 미출시 / Unreleased
+## 1.3.4 — 2026-11-28
 
-- 승인 알림 막대·Windows 알림·승인 상세·감사 로그에서 요청한 창이 `w2:p6(codex)` 같은 날 글자 대신 창 이름으로 보이고, 식별하지 못한 창은 그렇다고 표시합니다. 감사 로그를 창으로 걸러 볼 때 이름이 붙은 에이전트의 기록이 빠지던 문제도 고쳤습니다 / The approval banner, Windows notification, approval details and audit log now name the requesting pane instead of a raw label like `w2:p6(codex)` and say when it could not be identified; filtering the audit log by pane no longer drops records from named agents
+- 승인 알림 막대·Windows 알림·승인 상세·감사 로그에서 요청한 창이 `w2:p6(codex)` 같은 가공 전 표기 대신 창 이름으로 보이고, 식별하지 못한 창은 그렇다고 표시합니다. 감사 로그를 창으로 걸러 볼 때 이름이 붙은 에이전트의 기록이 빠지던 문제도 고쳤습니다 / The approval banner, Windows notification, approval details and audit log now name the requesting pane instead of a raw label like `w2:p6(codex)` and indicate when the pane cannot be identified; filtering the audit log by pane no longer drops records from named agents
 - 문서 전수 검수 반영: 메뉴 이름, 제거 시 Codex `notify` 복원 안내, Codex 연동 방법, 영어판 용어·문법과 빠진 내용, 한국어 조사를 바로잡고, SECURITY.md에 지원 버전과 한국어 요약을 넣었습니다 / Docs audit: fixed menu names, the uninstall note on restoring Codex `notify`, how to connect Codex, English terms, grammar and missing lines, and Korean particles; SECURITY.md now lists supported versions and has a Korean summary
 - 문서: GitHub에서 깨진 링크로 보이던 버튼·단축키 표기를 고치고, README 라이선스 절에 두 라이선스 파일 링크를 넣었습니다. CI가 공개 문서의 빈 절·깨진 링크·한영 제목 짝을 검사합니다 / Docs: fixed button and shortcut notes that GitHub rendered as broken links, linked both license files from the README, and CI now checks public docs for empty sections, broken links and Korean/English heading parity
 - KMttt X 버튼의 [창 닫기]를 [트레이로 숨기기]로 바꿔, 터미널 창을 닫는 [창 닫기]와 헷갈리지 않게 했습니다. 동작은 같습니다 / The KMttt window's "Close window" choice is now "Hide to tray", so it is not confused with closing a pane; behavior is unchanged
-- 승인 버튼 [허용]을 [이번만 허용]으로 바꾸고, 승인 상세 창에 [이 세션 동안 허용]이 무엇을 언제까지 허용하는지, 또는 왜 쓸 수 없는지 한 줄로 보여 줍니다 / The approval button now reads "Allow once", and the approval details say exactly what "Allow for this session" covers and until when, or why it is unavailable
-- 탭을 닫을 때도 확인 창을 띄웁니다. Windows에서는 서버 종료와 프로그램 끝내기 확인 문구에도, 창에서 시작한 프로그램과 처음 연 앱이 함께 닫힌다고 안내합니다 / Closing a tab now asks for confirmation, and on Windows the stop-server and quit confirmations also say that programs started from panes, including apps first opened from them, close too
+- 승인 버튼 [허용]을 [이번만 허용]으로 바꾸고, 승인 상세 창에 [이 세션 동안 허용]이 무엇을 언제까지 허용하는지, 또는 왜 쓸 수 없는지 한 줄로 보여 줍니다 / The approval button now reads "Allow once", and the approval details say exactly what "Allow for this session" covers and when it expires, or why it is unavailable
+- 탭을 닫을 때도 확인 창을 띄웁니다. Windows에서는 서버 종료와 프로그램 끝내기 확인 문구에도, 창에서 시작한 프로그램과 처음 연 앱이 함께 닫힌다고 안내합니다 / Closing a tab now prompts for confirmation, and on Windows the stop-server and quit confirmations also say that programs started from panes, including apps first opened from them, close too
 - Windows에서 창이나 워크스페이스를 닫을 때, 그 창에서 시작한 프로그램과 처음 연 앱(VS Code, 로그인 브라우저 등)도 함께 닫힌다고 확인 창에 안내합니다 / On Windows, the close confirmation for a pane or workspace now says that programs started from it, including apps first opened from it, close too
 - Codex notify 연결은 WSL·콘솔 호스트·원격 셸 실행 파일을 거부하고 실행 결과를 감사 로그에 남깁니다(서버가 없으면 생략). / Codex notify chaining rejects shell forwarding hosts and audits execution outcomes when a server is available.
-- Codex notify 연결의 감사 기록은 호출자별로 분당 `rate_per_min`건까지 남기고, 넘는 시작·완료 기록은 건수와 기간을 담은 요약 한 줄로 합칩니다. 실패·시간 초과는 따로 분당 20건까지 개별로 남기고, 넘는 것도 요약에 건수로 셉니다. / Codex notify chain audit records are limited to `rate_per_min` per caller per minute; extra start/completion records are merged into one summary with counts and time range. Failures and timeouts are recorded individually up to a separate 20 per minute, and any beyond that are counted in the summary.
+- Codex notify 연결의 감사 기록은 호출자별로 분당 `rate_per_min`건까지 남기고, 넘는 시작·완료 기록은 건수와 기간을 담은 요약 한 줄로 합칩니다. 실패·시간 초과는 따로 분당 20건까지 개별로 남기고, 넘는 것도 요약에 건수로 셉니다. / Codex notify chain audit records are limited to `rate_per_min` per caller per minute; extra start/completion records are merged into one summary with counts and a time range. Failures and timeouts are recorded individually up to a separate limit of 20 per minute, and any beyond that are counted in the summary.
+
+자세한 내용은 [릴리스 노트](docs/releases/v1.3.4.md)를 보세요. See the [release notes](docs/releases/v1.3.4.md).
 
 ## 1.3.3 — 2026-11-28
 
