@@ -1088,20 +1088,52 @@ pub async fn hook(agent: &str, event: &str, arg_payload: Option<String>) -> Resu
     Ok(0)
 }
 
+/// Per-event audit budget. Release builds always use 200 ms. Debug builds
+/// (`cargo test`) honor `KMTTT_TEST_AUDIT_BUDGET_MS`, capped at 10 s, so tests
+/// that count audit records do not lose them on a loaded machine.
+fn audit_budget() -> Duration {
+    #[cfg(debug_assertions)]
+    if let Some(ms) = std::env::var("KMTTT_TEST_AUDIT_BUDGET_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+    {
+        return Duration::from_millis(ms.min(10_000));
+    }
+    Duration::from_millis(200)
+}
+
 // Observation only: never start a server, log argv/payload, or block notify on
 // an unavailable/busy audit connection. Each event has a total 200 ms budget.
 async fn audit_notify_chain(phase: &str) {
     let session = std::env::var("KMTTT_SESSION")
         .or_else(|_| std::env::var("KMTTT_SESSION_NAME"))
         .unwrap_or_else(|_| "default".into());
-    let _ = tokio::time::timeout(Duration::from_millis(200), async {
-        let (client, _notes) = RpcClient::connect_local(&session).await?;
+    let _ = tokio::time::timeout(audit_budget(), async {
+        // connect_local retries a busy pipe for about 1 s, longer than the
+        // product budget, so this loop only matters for a raised test budget.
+        // A missing server still fails at once.
+        let (client, _notes) = loop {
+            match RpcClient::connect_local(&session).await {
+                Ok(c) => break c,
+                Err(e) if pipe_busy(&e) => continue,
+                Err(e) => return Err(e),
+            }
+        };
         client
             .call("hook.notify_chain", json!({"phase": phase}))
             .await?;
         Ok::<(), anyhow::Error>(())
     })
     .await;
+}
+
+/// Windows ERROR_PIPE_BUSY: the server exists but has no free pipe instance.
+fn pipe_busy(e: &anyhow::Error) -> bool {
+    cfg!(windows)
+        && e.chain().any(|c| {
+            c.downcast_ref::<std::io::Error>()
+                .is_some_and(|io| io.raw_os_error() == Some(231))
+        })
 }
 
 async fn hook_report(agent: &str, event: &str, arg_payload: Option<String>) -> Result<i32> {

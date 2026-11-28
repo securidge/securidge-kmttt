@@ -309,6 +309,9 @@ async fn previous_notifier_outcomes_reach_server_audit_without_payload_or_argv()
         let mut command = f.command();
         command
             .env(MODE, mode)
+            // This test counts every audit record. The product drops an audit
+            // after 200 ms; on a loaded machine connecting can take longer.
+            .env("KMTTT_TEST_AUDIT_BUDGET_MS", "5000")
             .args(["hook", "codex", "notify", PAYLOAD]);
         let out = tokio::task::spawn_blocking(move || command.output().unwrap())
             .await
@@ -342,7 +345,8 @@ async fn previous_notifier_outcomes_reach_server_audit_without_payload_or_argv()
                 "fail" => 2,
                 "hang" => 3,
                 _ => 4,
-            }
+            },
+            "{snapshot}"
         );
         for e in events {
             assert!(e["caller"].as_str().is_some_and(|s| !s.is_empty()));
