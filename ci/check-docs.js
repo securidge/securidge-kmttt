@@ -41,7 +41,12 @@ const HAS_TAGS = (() => {
 })();
 // 태그 대신 지금 트리로 확인한 태그(메시지에 그렇게 밝힌다)
 const FALLBACK_TAGS = new Set();
-const where = (tag) => (FALLBACK_TAGS.has(tag) ? `checked in the working tree; tag ${tag} not fetched` : `not in ${tag}`);
+const where = (tag) =>
+  !FALLBACK_TAGS.has(tag)
+    ? `not in ${tag}`
+    : tag === CURRENT_TAG
+      ? `checked in the working tree; tag ${tag} not created yet`
+      : `checked in the working tree; tag ${tag} not fetched`;
 function readAtTag(tag, p) {
   try {
     execFileSync("git", ["-C", root, "rev-parse", "--verify", "--quiet", `refs/tags/${tag}`], { stdio: "ignore" });
