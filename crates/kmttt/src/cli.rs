@@ -426,7 +426,7 @@ pub enum IntegrationCmd {
     /// claude(훅), codex(notify), claude-usage(사용량 표시용 상태 줄)
     Install {
         agent: String,
-        /// claude-usage: 이미 있는 다른 상태 줄을 바꿔도 된다(원래 것은 보관했다가 제거할 때 되돌림)
+        /// codex/claude-usage: 기존 notify/상태 줄을 보관하고 교체한다(해제 시 복원)
         #[arg(long)]
         replace: bool,
     },
